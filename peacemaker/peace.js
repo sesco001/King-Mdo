@@ -353,7 +353,10 @@ client.ev.on('messages.upsert', async ({ messages }) => {
 //========================================================================================================================//
 //========================================================================================================================//	  
     // Push Message To Console
-    let argsLog = budy.length > 30 ? `${q.substring(0, 30)}...` : budy;
+    // This ensures budy exists before trying to check its length
+let messageText = budy || ""; 
+let argsLog = messageText.length > 30 ? `${messageText.substring(0, 30)}...` : messageText;
+
 	  
 //========================================================================================================================//
 const Grace = mek.key.remoteJid;
