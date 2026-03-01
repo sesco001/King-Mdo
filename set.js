@@ -21,7 +21,7 @@ const packname = process.env.STICKER_PACKNAME || 'ᴘᴇᴀᴄᴇ';
 const dev = process.env.DEV || '254769995625';
 const owner = dev.split(",");
 const mycode = process.env.CODE || '254';
-const port = process.env.PORT || 8080;
+const port = process.env.PORT || 5000;
 
 // 🔹 DATABASE
 // This is the Backup/Display URL. 

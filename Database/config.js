@@ -1,5 +1,6 @@
 require('dotenv').config();
 const path = require('path');
+const chalk = require('chalk');
 
 // Import owner from set.js (Goes up one folder to find it)
 let set;
@@ -48,7 +49,7 @@ if (usePostgres) {
   // ==========================================================
   // 🟦 OPTION A: POSTGRESQL (Heroku / Render)
   // ==========================================================
-  console.log("📡 Mode: Cloud (PostgreSQL detected)");
+  console.log(chalk.cyan('[KING-M] ') + chalk.white('Database Mode: PostgreSQL (Cloud)'));
   const { Pool } = require('pg');
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -65,8 +66,8 @@ if (usePostgres) {
       for (const [key, value] of Object.entries(defaultSettings)) {
         await client.query(`INSERT INTO bot_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING;`, [key, value]);
       }
-      console.log("✅ PostgreSQL initialized.");
-    } catch (err) { console.error("❌ PG Init Error:", err); } finally { client.release(); }
+      console.log(chalk.green('[KING-M] ') + chalk.white('PostgreSQL initialized'));
+    } catch (err) { console.log(chalk.red('[ERROR] ') + chalk.white('PG Init: ' + err)); } finally { client.release(); }
   };
 
   // ... (Postgres functions) ...
@@ -84,7 +85,7 @@ if (usePostgres) {
   // ==========================================================
   // 🟩 OPTION B: SQLITE3 (Panel / VPS / Local)
   // ==========================================================
-  console.log("📡 Mode: Panel (Switching to SQLite)");
+  console.log(chalk.cyan('[KING-M] ') + chalk.white('Database Mode: SQLite (Local)'));
   const sqlite3 = require('sqlite3').verbose();
   const dbPath = path.resolve(__dirname, 'database.db');
   const db = new sqlite3.Database(dbPath);
@@ -117,11 +118,11 @@ if (usePostgres) {
             await query(`INSERT OR IGNORE INTO sudo_owners (number) VALUES (?)`, [num.trim()]);
           }
         }
-        console.log(`✅ Auto-synced ${set.owner.length} owner(s) from set.js to SQLite.`);
+        console.log(chalk.green('[KING-M] ') + chalk.white(`Auto-synced ${set.owner.length} owner(s) from set.js`));
       }
 
-      console.log("✅ SQLite initialized.");
-    } catch (err) { console.error("❌ SQLite Init Error:", err); }
+      console.log(chalk.green('[KING-M] ') + chalk.white('SQLite initialized'));
+    } catch (err) { console.log(chalk.red('[ERROR] ') + chalk.white('SQLite Init: ' + err)); }
   };
 
   // ... (SQLite functions) ...

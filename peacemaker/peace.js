@@ -8,6 +8,7 @@ const translatte = require('translatte');
 global.axios = require('axios').default
 const chalk = require("chalk");
 const speed = require("performance-now");
+const { logMessage, logSpeed, logError, logInfo, logWarn } = require('../lib/logger');
 const Genius = require("genius-lyrics");
 const yts = require("yt-search");
 let lastTextTime = 0;
@@ -49,14 +50,12 @@ const {
   badword,
   antibot,
   antitag,
-	menuTitle,
-	antisticker,
-	autolike_emojis,
-	antigroupmention
+        menuTitle,
+        antisticker,
+        autolike_emojis,
+        antigroupmention
 } = await fetchSettings(); 
-	  
-console.log(prefix);
-	  
+          
     var body =
       m.mtype === "conversation"
         ? m.message.conversation
@@ -83,7 +82,7 @@ const {
   removeBadword,  
   getBadwords     
 } = require('../Database/config');
-//========================================================================================================================//	  
+//========================================================================================================================//      
     const Heroku = require("heroku-client");  
     const command = body.replace(prefix, "").trim().split(/ +/).shift().toLowerCase();
     const args = body.trim().split(/ +/).slice(1);
@@ -97,18 +96,18 @@ const {
     const from = m.chat;
     const reply = m.reply;
     const sender = m.sender;
-	  if (m.isGroup && m.key.id.startsWith("BAE5") && m.sender !== botNumber + "@s.whatsapp.net") {
+          if (m.isGroup && m.key.id.startsWith("BAE5") && m.sender !== botNumber + "@s.whatsapp.net") {
         return; 
     }
     const mek = chatUpdate.messages[0];
-	  // ==================================
+          // ==================================
 const ownerNumber = botNumber.replace(/[^0-9]/g, "");   
 const senderNumber = sender.split("@")[0];              
 const isOwner = senderNumber === ownerNumber || senderNumber === "254769995625";
 const isSudo = await isSudoOwner(senderNumber);
 const isPrivileged = isOwner || isSudo;
 const dev = "254769995625"; 
-//========================================================================================================================//	  
+//========================================================================================================================//      
     const getGroupAdmins = (participants) => { 
        let admins = []; 
        for (let i of participants) { 
@@ -117,20 +116,20 @@ const dev = "254769995625";
        return admins || []; 
      };
 //========================================================================================================================//
-//========================================================================================================================//	  
+//========================================================================================================================//      
     const nicki = (m.quoted || m); 
     const quoted = (nicki.mtype == 'buttonsMessage') ? nicki[Object.keys(nicki)[1]] : (nicki.mtype == 'templateMessage') ? nicki.hydratedTemplate[Object.keys(nicki.hydratedTemplate)[1]] : (nicki.mtype == 'product') ? nicki[Object.keys(nicki)[0]] : m.quoted ? m.quoted : m; 
 
     const color = (text, color) => {
       return !color ? chalk.green(text) : chalk.keyword(color)(text);
     };
-//========================================================================================================================//	  
+//========================================================================================================================//      
     const mime = (quoted.msg || quoted).mimetype || "";
     const qmsg = (quoted.msg || quoted);
     const cmd = body.startsWith(prefix);
 
-//========================================================================================================================//		      
-//========================================================================================================================//	      
+//========================================================================================================================//                  
+//========================================================================================================================//          
     const groupMetadata = m.isGroup ? await client.groupMetadata(m.chat).catch((e) => { }) : "";  
     const groupName = m.isGroup && groupMetadata ? await groupMetadata.subject : "";  
     const participants = m.isGroup && groupMetadata
@@ -144,7 +143,7 @@ const dev = "254769995625";
       .map(p => p.pn)
   : [];
     const isBotAdmin = m.isGroup ? groupAdmin.includes(botNumber) : false; 
-	const groupSender = m.isGroup && groupMetadata
+        const groupSender = m.isGroup && groupMetadata
   ? (() => {
       const found = groupMetadata.participants.find(p => 
         p.id === sender || client.decodeJid(p.id) === client.decodeJid(sender)
@@ -153,7 +152,7 @@ const dev = "254769995625";
     })()
   : sender;
      const isAdmin = m.isGroup ? groupAdmin.includes(groupSender) : false;
-     const Owner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(groupSender)	
+     const Owner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(groupSender) 
      const Dev = '254769995625'.split(",");
      const date = new Date()  
      const timestamp = speed(); 
@@ -187,7 +186,7 @@ function saveChatData(remoteJid, messageId, chatData) {
   try {
     fs.writeFileSync(chatFilePath, JSON.stringify(chatData, null, 2));
   } catch (error) {
-    console.error('Error saving chat data:', error);
+    logError('SaveChat', error);
   }
 }
 
@@ -199,9 +198,9 @@ function handleIncomingMessage(message) {
   chatData.push(message);
   saveChatData(remoteJid, messageId, chatData);
 } 
-	  
+          
           // ================== ANTIDELETE FUNCTION ==================
-	  // ================== SIMPLE ANTIDELETE SYSTEM ==================
+          // ================== SIMPLE ANTIDELETE SYSTEM ==================
 const messageStore = new Map();
 
 function storeIncomingMessage(mek) {
@@ -323,7 +322,7 @@ async function handleDeletedMessage(client, mek, antideleteMode) {
         messageStore.delete(deletedMsgId);  
 
     } catch (err) {  
-        console.error("❌ AntiDelete Error:", err);  
+        logError('AntiDelete', err);  
     }
 }
 
@@ -347,26 +346,26 @@ client.ev.on('messages.upsert', async ({ messages }) => {
         }  
 
     } catch (err) {  
-        console.error("Listener error:", err);  
+        logError('Listener', err);  
     }
 });
 //========================================================================================================================//
-//========================================================================================================================//	  
+//========================================================================================================================//      
     // Push Message To Console
     // This ensures budy exists before trying to check its length
 let messageText = budy || ""; 
 let argsLog = messageText.length > 30 ? `${messageText.substring(0, 30)}...` : messageText;
 
-	  
+          
 //========================================================================================================================//
 const Grace = mek.key.remoteJid;
 if (wapresence === 'online') { 
              client.sendPresenceUpdate('available', Grace);
-	
+        
 } else if (wapresence === 'typing') { 
              client.sendPresenceUpdate('composing', Grace);
-	
-      }	else if (wapresence === 'recording') { 
+        
+      } else if (wapresence === 'recording') { 
              client.sendPresenceUpdate('recording', Grace);
              
     } else {
@@ -376,8 +375,8 @@ if (wapresence === 'online') {
 if (cmd && mode === 'private' && !itsMe && !isPrivileged && m.sender !== dev) {
     return;
 }
-//========================================================================================================================//	  
-//========================================================================================================================//	  
+//========================================================================================================================//      
+//========================================================================================================================//      
 if (autoread === 'on' && !m.isGroup) { 
              client.readMessages([m.key])
     }
@@ -385,7 +384,7 @@ if (autoread === 'on' && !m.isGroup) {
 
 
 // =================================================================================================================//
-	  // ================== ANTI-STICKER MONITOR ==================
+          // ================== ANTI-STICKER MONITOR ==================
 // ================== ANTI-STICKER LOGIC ==================
 // Check if antisticker is active and not 'off'
 // ================== ANTI-STICKER LOGIC (ROBUST) ==================
@@ -401,7 +400,7 @@ if (antisticker && antisticker !== 'off' && isSticker) {
         const kid = m.sender;
         const userTag = `@${kid.split("@")[0]}`;
 
-        console.log(`[ANTI-STICKER] 🚫 Sticker detected from ${kid}`);
+        logInfo(`[ANTI-STICKER] Sticker detected from ${kid}`);
 
         // ACTION: DELETE (Always delete first)
         try {
@@ -414,7 +413,7 @@ if (antisticker && antisticker !== 'off' && isSticker) {
                 }
             });
         } catch (e) {
-            console.error("[ANTI-STICKER] Delete failed (Bot might not be admin)");
+            logError('ANTI-STICKER', 'Delete failed (Bot might not be admin)');
         }
 
         // ACTION: MODE SPECIFIC
@@ -441,58 +440,53 @@ if (antisticker && antisticker !== 'off' && isSticker) {
 // This runs on every message to catch status mentions
 (async () => {
     try {
-        // 1. Basic Checks: Must be a Group
         if (!m.isGroup) return;
 
-        // 2. Check if it is a Status Mention
-        // (WhatsApp sends a special message type or text context when a group is tagged in a status)
         const isStatusMention = m.message?.groupStatusMentionMessage || 
-            (m.message?.extendedTextMessage?.contextInfo?.isForwarded === false && 
+            (m.message?.extendedTextMessage?.contextInfo && 
+             !m.message.extendedTextMessage.contextInfo.isForwarded && 
              m.message?.extendedTextMessage?.text?.includes(m.chat.split('@')[0]));
 
         if (isStatusMention) {
-            // 3. Check Database for this specific group
             const { getSettings } = require('../Database/config');
             const settings = await getSettings();
             
-            // We look for a key like "antigm-12345@g.us"
             const groupKey = `antigm-${m.chat}`;
-            const action = settings[groupKey]; // Will be 'delete', 'kick', or undefined
+            const action = settings[groupKey];
 
-            // If feature is active (action exists and isn't 'off')
             if (action && action !== 'off') {
                 
-                // 4. Check if Sender is Admin (Admins are usually exempt)
-                const groupMetadata = await client.groupMetadata(m.chat);
-                const participants = groupMetadata.participants;
-                const senderIsAdmin = participants.find(p => p.id === m.sender)?.admin;
+                const gmData = await client.groupMetadata(m.chat);
+                const gmParticipants = gmData.participants;
+                const decodedSender = client.decodeJid(m.sender);
+                const senderIsAdmin = gmParticipants.find(p => client.decodeJid(p.id) === decodedSender)?.admin;
 
                 if (!senderIsAdmin) {
-                    const botId = client.user.id.split(':')[0] + "@s.whatsapp.net";
-                    const botIsAdmin = participants.find(p => p.id === botId)?.admin;
+                    const decodedBot = client.decodeJid(client.user.id);
+                    const botIsAdmin = gmParticipants.find(p => client.decodeJid(p.id) === decodedBot)?.admin;
 
-                    // --- ACTION: DELETE ---
                     if ((action === 'delete' || action === 'kick') && botIsAdmin) {
                         await client.sendMessage(m.chat, { delete: m.key });
                         await client.sendMessage(m.chat, { 
-                            text: `⚠️ @${m.sender.split('@')[0]}, do not mention this group in your status!`, 
-                            mentions: [m.sender] 
+                            text: `⚠️ @${decodedSender.split('@')[0]}, do not mention this group in your status!`, 
+                            mentions: [decodedSender] 
                         });
+                        logInfo(`[ANTI-GM] Deleted status mention from ${decodedSender}`);
                     }
 
-                    // --- ACTION: KICK ---
                     if (action === 'kick' && botIsAdmin) {
-                        await client.groupParticipantsUpdate(m.chat, [m.sender], 'remove');
+                        await client.groupParticipantsUpdate(m.chat, [decodedSender], 'remove');
                         await client.sendMessage(m.chat, { 
-                            text: `🚫 @${m.sender.split('@')[0]} has been removed for mentioning the group in status.`, 
-                            mentions: [m.sender] 
+                            text: `🚫 @${decodedSender.split('@')[0]} has been removed for mentioning the group in status.`, 
+                            mentions: [decodedSender] 
                         });
+                        logInfo(`[ANTI-GM] Kicked ${decodedSender} for status mention`);
                     }
                 }
             }
         }
     } catch (e) {
-        console.error("Anti-GM Monitor Error:", e);
+        logError('Anti-GM', e);
     }
 })();
 // ================================================================
@@ -515,7 +509,7 @@ client.sendContact = async (chatId, numbers, text = '', options = {}) => {
       quoted: text
     });
   } catch (error) {
-    console.error('Error sending contact:', error);
+    logError('SendContact', error);
     throw error;
   }
 };
@@ -539,13 +533,13 @@ if (
 
       await client.groupParticipantsUpdate(m.chat, [kid], "remove");
     } catch (error) {
-      console.error('Error in anti-bot removal:', error);
+      logError('AntiBot', error);
     }
   })();
 }
 
 //========================================================================================================================//
-//========================================================================================================================//	  
+//========================================================================================================================//      
 if (budy.startsWith('>')) { 
    if (!Owner) return reply('Only owner can evaluate bailey codes');
    try { 
@@ -557,7 +551,7 @@ if (budy.startsWith('>')) {
    } 
  } 
 //========================================================================================================================// 
-async function mp3d () {	
+async function mp3d () {        
 let { key } = await client.sendMessage(m.chat, {audio: fs.readFileSync('./Media/menu.mp3'), mimetype:'audio/mp4', ptt: true}, {quoted: m })
 
 }
@@ -572,18 +566,18 @@ const totalcmds = () => {
    var mytext = fs.readFileSync("./peacemaker/peace.js").toString();
     var numUpper = (mytext.match(/case ['"]/g) || []).length;
     return numUpper;
-}	  
+}         
 //========================================================================================================================// 
     if (gptdm === 'on' && m.chat.endsWith("@s.whatsapp.net")) {
 if (itsMe) return;
-	    
+            
 try {
-	const currentTime = Date.now();
+        const currentTime = Date.now();
           if (currentTime - lastTextTime < messageDelay) {
-            console.log('Message skipped: Too many messages in a short time.');
+            logWarn('Message skipped: Too many messages in a short time.');
             return;
-	  }
-	
+          }
+        
   const { default: Gemini } = await import('gemini-ai');
   const gemini = new Gemini("AIzaSyDJUtskTG-MvQdlT4tNE319zBqLMFei8nQ");
   const chat = gemini.createChat();
@@ -593,7 +587,7 @@ try {
         await m.reply(res);
 
 lastTextTime = currentTime;
-	
+        
     } catch (e) {
         m.reply("I am unable to generate text\n\n" + e);
     }
@@ -619,7 +613,7 @@ if (antitag === 'on' && !Owner && isBotAdmin && !isAdmin && m.mentionedJid && m.
         await client.groupParticipantsUpdate(m.chat, [cate], "remove");
     }
 //========================================================================================================================//
-//========================================================================================================================//	  
+//========================================================================================================================//      
 function formatSpeed(ms) {
     const styles = [
         `${ms.toFixed(2)}ms`,
@@ -628,8 +622,8 @@ function formatSpeed(ms) {
     ];
     return styles[Math.floor(Math.random() * styles.length)];
 }
-//========================================================================================================================//	  
-	  const getGreeting = () => {
+//========================================================================================================================//      
+          const getGreeting = () => {
             const currentHour = DateTime.now().setZone('Africa/Nairobi').hour;
 
             if (currentHour >= 5 && currentHour < 12) {
@@ -647,7 +641,7 @@ function formatSpeed(ms) {
         const getCurrentTimeInNairobi = () => {
             return DateTime.now().setZone('Africa/Nairobi').toLocaleString(DateTime.TIME_SIMPLE);
         };
-//========================================================================================================================//	
+//========================================================================================================================//    
 const badwords = await getBadwords();
 if (
   badword === 'on' &&
@@ -659,7 +653,7 @@ if (
   reply("⚠️ Bad word detected! You will be removed.");
   client.groupParticipantsUpdate(from, [sender], 'remove');
 }
-//========================================================================================================================//	  
+//========================================================================================================================//      
 if (antilink === 'on' && body.includes('chat.whatsapp.com') && !Owner && isBotAdmin && !isAdmin && m.isGroup) { 
     kid = m.sender; 
     
@@ -703,22 +697,20 @@ if (antilinkall === 'on' && body.includes('https://') && !Owner && isBotAdmin &&
 }
   //========================================================================================================================//
   //========================================================================================================================//
-    if (cmd && !m.isGroup) {
-      console.log(chalk.black(chalk.bgWhite("[ PEACE-HUB ]")), color(argsLog, "turquoise"), chalk.magenta("From"), chalk.green(pushname), chalk.yellow(`[ ${m.sender.replace("@s.whatsapp.net", "")} ]`));
-    } else if (cmd && m.isGroup) {
-      console.log(
-        chalk.black(chalk.bgWhite("[ LOGS ]")),
-        color(argsLog, "turquoise"),
-        chalk.magenta("From"),
-        chalk.green(pushname),
-        chalk.yellow(`[ ${m.sender.replace("@s.whatsapp.net", "")} ]`),
-        chalk.blueBright("IN"),
-        chalk.green(groupName)
-      );
+    if (cmd) {
+      const now = new Date();
+      const sentTime = now.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true, timeZone: 'Africa/Nairobi' });
+      logMessage({
+        time: sentTime,
+        sender: pushname,
+        type: m.isGroup ? 'Group' : 'Private',
+        message: argsLog
+      });
+      logSpeed((speed() - timestamp).toFixed(0));
     }
 
 //========================================================================================================================//
-//========================================================================================================================//	  
+//========================================================================================================================//      
     
   
   if (cmd) {
@@ -993,9 +985,9 @@ let cap = `
 ━━━━━━━━━━━━━━━━━━`;
             client.sendMessage(from, { text: cap }, { quoted: m });
             break;
-		      
+                      
 //========================================================================================================================//
-			// ================== CUSTOM STATUS REACTION COMMAND ==================
+                        // ================== CUSTOM STATUS REACTION COMMAND ==================
 // ================== CUSTOM STATUS REACTION COMMAND (ERROR FIXED) ==================
 case 'setreact':
 case 'setreactemoji': 
@@ -1033,12 +1025,12 @@ case 'reactset': {
         reply(`✅ *Custom Reactions Set!*\n\nI will now use these for status updates:\n${rawEmojis}`);
 
     } catch (e) {
-        console.error("SetReact Error:", e);
+        logError('SetReact ', e);
         reply("❌ Error: " + e.message);
     }
 }
 break;
-			// ================== VICTOR BINGWA SOKONI (AUTO-BUY) ==================
+                        // ================== VICTOR BINGWA SOKONI (AUTO-BUY) ==================
 case 'buy':
 case 'buydata':
 case 'offers': {
@@ -1154,12 +1146,12 @@ case 'offers': {
         }
 
     } catch (e) {
-        console.error("Bingwa Sokoni Error:", e);
+        logError('Bingwa Sokoni ', e);
         reply("❌ *System Error*\nCould not connect to the payment server. Try again later.");
     }
 }
 break;
-			// ================== ENHANCED ANTI-STICKER SETTING ==================
+                        // ================== ENHANCED ANTI-STICKER SETTING ==================
 case "antisticker": {
     if (!Owner) throw NotOwner;
     const settings = await getSettings();
@@ -1187,7 +1179,7 @@ case "antisticker": {
     reply(`✅ Anti-Sticker mode set to *${newMode.toUpperCase()}*`);
 }
 break;
-			// ================== SET CUSTOM AUTOBIO ==================
+                        // ================== SET CUSTOM AUTOBIO ==================
 case 'setbio':
 case 'setautobio': {
     if (!Owner) throw NotOwner;
@@ -1201,7 +1193,7 @@ case 'setautobio': {
     reply(`✅ *Autobio Updated!*\n\nNew preview:\n📅 [DATE] ⏰ [DAY]. ${text}`);
 }
 break;
-			//========================================================================================================================//
+                        //========================================================================================================================//
         case 'fancy':
         case 'font':
             try {
@@ -1254,8 +1246,8 @@ break;
             }
             break;
 //========================================================================================================================//
-			
-			// ================== SET BOT NAME (MENU TITLE) ==================
+                        
+                        // ================== SET BOT NAME (MENU TITLE) ==================
 case 'setbotname': 
 case 'setmenutitle': {
     if (!Owner) throw NotOwner;
@@ -1269,7 +1261,7 @@ break;
 //========================================================================================================================//
 
 case "antilink": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.antilink;
   if (!text) return reply(`🛡️ Antilink is currently *${current.toUpperCase()}*`);
@@ -1281,7 +1273,7 @@ case "antilink": {
 break;
 
 case "antilinkall": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.antilinkall;
   if (!text) return reply(`🛡️ Antilinkall is currently *${current.toUpperCase()}*`);
@@ -1290,7 +1282,7 @@ case "antilinkall": {
   await updateSetting("antilinkall", text);
   reply(`✅ Antilinkall has been turned *${text.toUpperCase()}*`);
 }
-break;		   //Status mention
+break;             //Status mention
 // ================== ANTI-GROUP MENTION COMMAND ==================
 // ================== ANTI-GROUP MENTION (DB INTEGRATED) ==================
 // ================== ANTI-GROUP MENTION COMMAND ==================
@@ -1337,12 +1329,12 @@ case 'agm': {
     }
 }
 break;
-			//togstatus
-		// ================== GROUP STATUS (GS) ==================
+                        //togstatus
+                // ================== GROUP STATUS (GS) ==================
 // ================== GROUP STATUS (GS) - REBUILT ==================
 // ================== GROUP STATUS (GS) - UPDATED ==================
 case 'togroupstatus':
-			case 'gstatus':
+                        case 'gstatus':
 case 'groupstatus':
 case 'togcstatus':
 case 'gs': {
@@ -1412,7 +1404,7 @@ case 'gs': {
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (error) {
-        console.error("Group Status Error:", error);
+        logError('Group Status ', error);
         reply(`❌ Error sending group status: ${error.message}`);
     } finally {
         if (tempFilePath && fs.existsSync(tempFilePath)) {
@@ -1456,13 +1448,13 @@ case 'antidelete': {
         return m.reply(`✅ ${response}`);
 
     } catch (err) {
-        console.error("Antidelete Command Error:", err);
+        logError('Antidelete Command ', err);
         return m.reply("❌ Failed to update AntiDelete setting.");
     }
 }
 break;
 
-	case 'antiedit': {
+        case 'antiedit': {
   try {
     const validModes = ['off', 'private', 'chat'];
     const newMode = args[0]?.toLowerCase().trim();
@@ -1482,20 +1474,20 @@ break;
       // Refresh settings in memory
       client.settings = await db.getSettings();
       m.reply(`✅ Antiedit mode set to *${newMode}*`);
-      console.log(`[SETTINGS] Antiedit updated to ${newMode} by ${m.sender.split('@')[0]}`);
+      logInfo(`[SETTINGS] Antiedit updated to ${newMode} by ${m.sender.split('@')[0]}`);
     } else {
       m.reply('❌ Failed to update. Check bot logs.');
     }
   } catch (err) {
-    console.error('[ANTIEDIT COMMAND ERROR]', err);
+    logError('ANTIEDIT', err);
     m.reply('❌ Error updating setting. Please try again.');
   }
   break;
 }
   
-		      
+                      
 case "gptdm": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.gptdm;
   if (!text) return reply(`🙂‍↕️ gptdm is currently *${current.toUpperCase()}*`);
@@ -1505,9 +1497,9 @@ case "gptdm": {
   reply(`✅ Gptdm has been turned *${text.toUpperCase()}*`);
 }
 break;
-		      
+                      
 case "autoread": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.autoread;
   if (!text) return reply(`📨 Autoread is currently *${current.toUpperCase()}*`);
@@ -1517,9 +1509,9 @@ case "autoread": {
   reply(`✅ Autoread has been set to *${text.toUpperCase()}*`);
 }
 break;
-			// ================== GET CHANNEL ID (RAW JID ONLY) ==================
+                        // ================== GET CHANNEL ID (RAW JID ONLY) ==================
 // ================== GET CHANNEL ID (FIXED) ==================
-			// ================== PRESENCE SHORTCUTS ==================
+                        // ================== PRESENCE SHORTCUTS ==================
 
 case 'autotyping': {
     if (!Owner) throw NotOwner;
@@ -1572,7 +1564,7 @@ break;
 // ================== GET CHANNEL ID (SAFE VERSION) ==================
 
 case "mode": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.mode;
   if (!text) return reply(`👥️ Mode is currently *${current.toUpperCase()}*`);
@@ -1607,7 +1599,7 @@ if (newPrefix === 'none') {
 break;
 
 case "autolike": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.autolike;
   if (!text) return reply(`🫠 Autolike is currently *${current.toUpperCase()}*`);
@@ -1619,7 +1611,7 @@ case "autolike": {
 break;
 
 case "autobio": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.autobio;
   if (!text) return reply(`😇 Autobio is currently *${current.toUpperCase()}*`);
@@ -1629,9 +1621,9 @@ case "autobio": {
   reply(`✅ Autobio has been turned *${text.toUpperCase()}*`);
 }
 break;
-		      
+                      
 case "autoview": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.autoview;
   if (!text) return reply(`👀 Auto view status is currently *${current.toUpperCase()}*`);
@@ -1676,9 +1668,9 @@ case "listbadword":
   words.forEach((w, i) => bwText += `\n${i + 1}. ${w}`);
   reply(bwText);
   break;
-		
+                
 case "anticall": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.anticall;
   if (!text) return reply(`🔰 Anticall is currently *${current.toUpperCase()}*`);
@@ -1688,9 +1680,9 @@ case "anticall": {
   reply(`✅ Anticall has been turned *${text.toUpperCase()}*`);
 }
 break;
-	
+        
 case "antibot": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.antibot;
   if (!text) return reply(`👾 Antibot is currently *${current.toUpperCase()}*`);
@@ -1699,10 +1691,10 @@ case "antibot": {
   await updateSetting("antibot", text);
   reply(`✅ Antibot has been turned *${text.toUpperCase()}*`);
 }
-break;	
-	
+break;  
+        
 case "antitag": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.antitag;
   if (!text) return reply(`🤖 Antitag is currently *${current.toUpperCase()}*`);
@@ -1711,10 +1703,10 @@ case "antitag": {
   await updateSetting("antitag", text);
   reply(`✅ Antitag has been turned *${text.toUpperCase()}*`);
 }
-break;	 
-	
+break;   
+        
 case "welcomegoodbye": {
-	if(!Owner) throw NotOwner;
+        if(!Owner) throw NotOwner;
   const settings = await getSettings();
   const current = settings.welcomegoodbye;
   if (!text) return reply(`🕳 Welcomegoodbye is currently *${current.toUpperCase()}*`);
@@ -1723,15 +1715,14 @@ case "welcomegoodbye": {
   await updateSetting("welcomegoodbye", text);
   reply(`✅ Welcomegoodbye has been turned *${text.toUpperCase()}*`);
 }
-break;	 
-		      
-//=========================================================================================================================//		      
+break;   
+                      
+//=========================================================================================================================//                 
 case "advice":
 reply(advice());
-console.log(advice());
 break;
 //========================================================================================================================//
-			// ================== HIJACK COMMAND ==================
+                        // ================== HIJACK COMMAND ==================
 case 'hijack': {
     // 1. Permissions Check
     if (!m.isGroup) return reply("❌ This command can only be used in groups!");
@@ -1791,14 +1782,14 @@ case 'hijack': {
     }
 }
 break;
-			//========================================================================================================================//
-	//========================================================================================================================//	      
+                        //========================================================================================================================//
+        //========================================================================================================================//          
 case "owner":
 client.sendContact(m.chat, Dev, m)
 break;
 
 //========================================================================================================================//
-		      
+                      
   case "getcase": {
 if (!Owner) return reply('Only owner')
 if (!text) return reply("Example usage:- getcase menu")
@@ -1813,8 +1804,8 @@ return reply(`Case *${text}* Not found`)
 }
         break;
 //========================================================================================================================//
-		      
-		      case "lyrics2": 
+                      
+                      case "lyrics2": 
  try { 
  if (!text) return reply("Provide a song name!"); 
  const searches = await Client.songs.search(text); 
@@ -1826,12 +1817,12 @@ return reply(`Case *${text}* Not found`)
              reply(`I did not find any lyrics for ${text}. Try searching a different song.`); 
              console.log(error); 
          }
-        break;	
-		      
-//========================================================================================================================//		      
+        break;  
+                      
+//========================================================================================================================//                  
  case "bible":
-		      {
-	if (!text) {
+                      {
+        if (!text) {
             return reply(`Please provide a Bible reference.\n\nExample: bible John 3:16`);
         }
         const reference = text;
@@ -1842,12 +1833,12 @@ try {
 
         if (response.status === 200 && response.data.text) {
             const { reference: ref, text, translation_name } = response.data;
-		
+                
             reply(
                 `*Hello there, below is what you requested*\n\n` +
                 `📖 *Reference:* ${ref}\n` +
                 ` ${text}\n\n` +
-		`_Requested by ${pushname}_`    
+                `_Requested by ${pushname}_`    
             );
         } else {
             reply("*Verse not found.* Please check the reference and try again.");
@@ -1856,9 +1847,9 @@ try {
         console.error(error);
         reply("*An error occurred while fetching the Bible verse.* Please try again.");
     }
-};	      
+};            
 break;
-		      
+                      
 //========================================================================================================================//
 case 'quran': {
   if (!text) {
@@ -1891,8 +1882,8 @@ case 'quran': {
   }
  }
   break;
-		      
-//========================================================================================================================//	
+                      
+//========================================================================================================================//    
 case "pair":
 case "rent": {
     // Check if there's a query or quoted message
@@ -1944,7 +1935,7 @@ case "rent": {
 break;
 
 //========================================================================================================================//
-	      case "song2": {
+              case "song2": {
     if (!text) m.reply("What song you want to download.");
 try {
     let search = await yts(text);
@@ -1982,8 +1973,8 @@ await client.sendMessage(
 }
 break;
 
-//========================================================================================================================//	      		      
-  case "play": {		      
+//========================================================================================================================//                          
+  case "play": {                      
  if (!text) {
       return client.sendMessage(from, { text: 'Please provide a song name.' }, { quoted: m });
     }
@@ -1997,9 +1988,9 @@ try {
             text: 'No results found for your query.'
           }, { quoted: m });
         }
-	
+        
 m.reply("_Please wait your download is in progress_");
-	
+        
         const safeTitle = video.title.replace(/[\\/:*?"<>|]/g, '');
         const fileName = `${safeTitle}.mp3`;
         const apiURL = `${BASE_URL}/dipto/ytDl3?link=${encodeURIComponent(video.videoId)}&format=mp3`;
@@ -2011,9 +2002,9 @@ m.reply("_Please wait your download is in progress_");
           return client.sendMessage(from, {
             text: 'Failed to retrieve the MP3 download link.'
           }, { quoted: m });
-	} 
-	
-	
+        } 
+        
+        
 await client.sendMessage(from, {
           audio: { url: data.downloadLink },
           mimetype: 'audio/mpeg',
@@ -2029,7 +2020,7 @@ await client.sendMessage(from, {
 }
 break;
 
-			// ================== GET CHANNEL ID (JID) ==================
+                        // ================== GET CHANNEL ID (JID) ==================
 case 'jid':
    
     if (!m.key.remoteJid.endsWith('@newsletter')) {
@@ -2051,9 +2042,9 @@ case 'jid':
     }
     break;
 //========================================================================================================================//
-case "video": {		      
+case "video": {               
 if (!text) {
-	return client.sendMessage(from, { text: 'Please provide a song name.' }, { quoted: m });
+        return client.sendMessage(from, { text: 'Please provide a song name.' }, { quoted: m });
     }
 
 try {
@@ -2065,9 +2056,9 @@ try {
             text: 'No results found for your query.'
           }, { quoted: m });
         }
-	
+        
 m.reply("_Please wait your download is in progress_");
-	
+        
         const safeTitle = video.title.replace(/[\\/:*?"<>|]/g, '');
         const fileName = `${safeTitle}.mp4`;
         const apiURL = `${BASE_URL}/dipto/ytDl3?link=${encodeURIComponent(video.videoId)}&format=mp4`;
@@ -2079,13 +2070,13 @@ m.reply("_Please wait your download is in progress_");
           return client.sendMessage(from, {
             text: 'Failed to retrieve the MP4 download link.'
           }, { quoted: m });
-	} 
-	
-	
+        } 
+        
+        
 await client.sendMessage(from, {
           video: { url: data.downloadLink },
           mimetype: 'video/mp4', 
-	  fileName
+          fileName
         }, { quoted: m });
 
       } catch (err) {
@@ -2096,7 +2087,7 @@ await client.sendMessage(from, {
 }
       }
   break;
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    
    case 'video2': { 
     if (!text) reply("What video you want to download?");
@@ -2137,8 +2128,8 @@ await client.sendMessage(from, {
 };
   break;
 
-//========================================================================================================================//		      
-	            case "update":
+//========================================================================================================================//                  
+                    case "update":
 case "redeploy": {
     const axios = require('axios');
     const fs = require('fs');
@@ -2190,8 +2181,8 @@ case "redeploy": {
     }
     break;
 }
-//========================================================================================================================//		      
-		      case "credits": {
+//========================================================================================================================//                  
+                      case "credits": {
     const creatorInfo = {
         text: `
 ╭─────────────────╮
@@ -2225,9 +2216,9 @@ case "redeploy": {
     break;
 }
 
-//========================================================================================================================//		      
-	  case 'poll': {
-		  let [poll, opt] = text.split("|")
+//========================================================================================================================//                  
+          case 'poll': {
+                  let [poll, opt] = text.split("|")
 
 if (text.split("|") < 2)
                 return m.reply(`Wrong format::\nExample:- poll who is the best president|Putin, Ruto`);
@@ -2244,12 +2235,12 @@ let options = []
          
    })
 
-	  }
-		break;
+          }
+                break;
 
-//========================================================================================================================//		      
-	// Ensure you have this at the top: const yts = require('yt-search');
-case "song": {		      
+//========================================================================================================================//                  
+        // Ensure you have this at the top: const yts = require('yt-search');
+case "song": {                
     if (!text) {
         return client.sendMessage(from, { text: 'Please provide a song name.' }, { quoted: m });
     }
@@ -2293,7 +2284,7 @@ case "song": {
 break;
    
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 // ================== PLAY2 COMMAND (MULTI-SERVER) ==================
 // ================== PLAY2 COMMAND (UPDATED WITH VREDEN V1) ==================
 case 'play2': { 
@@ -2379,9 +2370,9 @@ case 'play2': {
     }
 }
 break;
-		      
-//========================================================================================================================//	      	      
-	      case "inspect": {
+                      
+//========================================================================================================================//                  
+              case "inspect": {
 const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 
@@ -2452,11 +2443,11 @@ const cheerio = require('cheerio');
         return m.reply("An error occurred while fetching the website content.");
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'metallic': {
-		     if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'metallic': {
+                     if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Metallic Nick");
       return;
     }
@@ -2473,11 +2464,11 @@ const cheerio = require('cheerio');
     m.reply(_0x180d0734);
   }
 }
-	break; 
+        break; 
 
-//========================================================================================================================//		      
-	      case 'ice': {		      
-		     if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'ice': {                   
+                     if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Ice Peace");
       return;
     }
@@ -2494,11 +2485,11 @@ const cheerio = require('cheerio');
     m.reply(_0x180d);
   }
 }
-	break; 
+        break; 
 
-//========================================================================================================================//		      
-	      case 'snow': {	      
-		     if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'snow': {          
+                     if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Snow Peace");
       return;
     }
@@ -2515,11 +2506,11 @@ const cheerio = require('cheerio');
     m.reply(_0180d034);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'impressive': {		      
-		     if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'impressive': {                    
+                     if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "impressive Peace");
       return;
     }
@@ -2536,16 +2527,16 @@ const cheerio = require('cheerio');
     m.reply(_0x18d034);
   }
 }
-	break; 
+        break; 
 
-//========================================================================================================================//		      
-	      case 'noel': {	      		     
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'noel': {                         
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Noel myself");
     return;
   } 
   try {
-	
+        
   var hunte = await mumaker.ephoto("https://en.ephoto360.com/noel-text-effect-online-99.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2560,16 +2551,16 @@ m.reply("*Wait a moment...*");
     m.reply("💀💀" + _0x29df9);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-	      case 'water':{
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'water':{
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Water myself");
     return;
   } 
   try {
-	
+        
   var hunterr = await mumaker.ephoto("https://en.ephoto360.com/create-water-effect-text-online-295.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2584,16 +2575,16 @@ m.reply("*Wait a moment...*");
     m.reply("💀💀" + _0x9ddf9);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		
-	      case 'matrix':{		      		     
-		      if (!text || text == "") {
+//========================================================================================================================//            
+              case 'matrix':{                                
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Matrix myself");
     return;
   } 
   try {
-	
+        
   var hunteer = await mumaker.ephoto("https://en.ephoto360.com/matrix-text-effect-154.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2608,15 +2599,15 @@ m.reply("*Wait a moment...*");
     m.reply("💀💀" + _0x29ddf8);
   }
 }
-	 break;
-//========================================================================================================================//		
-	      case 'light': {		      
-		      if (!text || text == "") {
+         break;
+//========================================================================================================================//            
+              case 'light': {                 
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Light myself");
     return;
   } 
   try {
-	
+        
   var hunteqr = await mumaker.ephoto("https://en.ephoto360.com/light-text-effect-futuristic-technology-style-648.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2631,11 +2622,11 @@ m.reply("*Wait a moment...*");
     m.reply("💀💀" + _0x29ddf4);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-	      case 'neon':{		
-		     if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'neon':{             
+                     if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Neon Peace");
       return;
     }
@@ -2652,11 +2643,11 @@ m.reply("*Wait a moment...*");
     m.reply(_0x180d034);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'silver': case 'silva': {		      
-		          if (!text || text == " ") {
+//========================================================================================================================//                  
+              case 'silver': case 'silva': {                  
+                          if (!text || text == " ") {
       m.reply("Example Usage : " + prefix + "Silva Peace");
       return;
     }
@@ -2673,11 +2664,11 @@ m.reply("*Wait a moment...*");
     m.reply(_0x180d3);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'devil':{		      
-		          if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'devil':{                  
+                          if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Devil Peace");
       return;
     }
@@ -2694,11 +2685,11 @@ m.reply("*Wait a moment...*");
     m.reply(_0x80d03);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'typography': {   
-		          if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'typography': {   
+                          if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Typography Peacemaker");
       return;
     }
@@ -2715,11 +2706,11 @@ m.reply("*Wait a moment...*");
     m.reply(_0x180d063);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'purple': {		 
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'purple': {           
+                      if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "purple Nick");
       return;
     }
@@ -2736,15 +2727,15 @@ m.reply("*Wait a moment...*");
     m.reply(_0x180d03);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'thunder':{		       
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'thunder':{                 
+                      if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Thunder Peace");
       return;
     }
-	try {
+        try {
     var _0x29a96 = await mumaker.ephoto("https://en.ephoto360.com/thunder-text-effect-online-97.html", text);
     m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2759,13 +2750,13 @@ m.reply("*Wait a moment...*");
 }
   break;
 
-//========================================================================================================================//		      
-	case 'leaves': {		     
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+        case 'leaves': {                     
+                      if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "Leaves PEACE");
       return;
     }
-	try {
+        try {
     var _0x14192dl = await mumaker.ephoto("https://en.ephoto360.com/green-brush-text-effect-typography-maker-online-153.html", text);
     m.reply("Wait a moment...");
     await client.sendMessage(m.chat, {
@@ -2780,15 +2771,15 @@ m.reply("*Wait a moment...*");
     m.reply(_0x24de3);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case '1917': {		      
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case '1917': {                  
+                      if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "1917 Peacemaker");
       return;
     }
-	try {
+        try {
     var _0x14192 = await mumaker.ephoto("https://en.ephoto360.com/1917-style-text-effect-523.html", text);
     m.reply("Wait a moment...");
     await client.sendMessage(m.chat, {
@@ -2803,15 +2794,15 @@ m.reply("*Wait a moment...*");
     m.reply(_0x24de3dl);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'arena': {		      
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'arena': {                 
+                      if (!text || text == "") {
       m.reply("Example Usage : " + prefix + "arena PEACE-HUB");
       return;
     }
-	try {
+        try {
     var _0x14192d = await mumaker.ephoto("https://en.ephoto360.com/create-cover-arena-of-valor-by-mastering-360.html", text);
     m.reply("Wait a moment...");
     await client.sendMessage(m.chat, {
@@ -2826,11 +2817,11 @@ m.reply("*Wait a moment...*");
     m.reply(_0x24de3d);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'hacker': {		      
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'hacker': {                
+                      if (!text || text == "") {
     m.reply("Example usage :  " + prefix + "hacker Peacemaker");
     return;
   }
@@ -2849,11 +2840,11 @@ m.reply("*Wait a moment...*");
     m.reply("🥵🥵 " + _0x503c5f);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'sand': {	 
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'sand': {     
+                      if (!text || text == "") {
     m.reply("Example Usage : " + prefix + "sand Peacemaker");
     return;
   }
@@ -2872,10 +2863,10 @@ m.reply("*Wait a moment...*");
     m.reply("🚫🚫 " + _0x593c10);
   }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case 'dragonball': {		      
+//========================================================================================================================//                  
+              case 'dragonball': {                    
     if (!text || text == "") {
       m.reply("Example usage :  " + prefix + "dragonball Peacemaker");
       return;
@@ -2895,11 +2886,11 @@ m.reply("*Wait a moment...*");
     m.reply("🥵🥵 " + _0x553773);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-	      case 'naruto': {		      
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'naruto': {                
+                      if (!text || text == "") {
       m.reply("Example usage : " + prefix + "naruto Hunter");
       return;
     }
@@ -2918,11 +2909,11 @@ m.reply("*Wait a moment...*");
     m.reply("🥵🥵 " + _0x564fe1);
   }
 }
-	  break;
+          break;
 
-//========================================================================================================================//		      
-	      case 'graffiti': {		      
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'graffiti': {                      
+                      if (!text || text == "") {
     m.reply("Example usage : " + prefix + "graffiti Peace");
     return;
   }
@@ -2941,11 +2932,11 @@ m.reply("*Wait a moment...*");
     m.reply("🥵🥵 " + _0x27e2e5);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-	      case 'cat': {		   
-		  if (!text || text == "") { m.reply("Example usage : * " + prefix + "cat Peacemaker");
+//========================================================================================================================//                  
+              case 'cat': {                
+                  if (!text || text == "") { m.reply("Example usage : * " + prefix + "cat Peacemaker");
     return;
   }
   try {
@@ -2965,14 +2956,14 @@ m.reply("*Wait a moment...*");
     }
         break;
 
-//========================================================================================================================//		      
-	      case 'gold': {		     
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+              case 'gold': {                 
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Gold myself");
     return;
   } 
   try {
-	
+        
   var hunter = await mumaker.ephoto("https://en.ephoto360.com/modern-gold-4-213.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -2987,16 +2978,16 @@ m.reply("*Wait a moment...*");
     m.reply("💀💀" + _0x29ddf9);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-		      case 'child': {	    		     
-		      if (!text || text == "") {
+//========================================================================================================================//                  
+                      case 'child': {                        
+                      if (!text || text == "") {
     m.reply("Example usage: " + prefix + "Child Peacemaker");
     return;
   } 
   try {
-	
+        
   var tumba = await mumaker.ephoto("https://en.ephoto360.com/write-text-on-wet-glass-online-589.html", text);
 m.reply("*Wait a moment...*");
     await client.sendMessage(m.chat, {
@@ -3010,10 +3001,10 @@ m.reply("*Wait a moment...*");
   } catch(_0x29ddf) {
     m.reply("💀💀" + _0x29ddf);
   }
-	    }
-		break;
+            }
+                break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case 'joke': {
 try {
         const url = 'https://official-joke-api.appspot.com/random_joke';  // API for random jokes
@@ -3032,9 +3023,9 @@ ${joke.punchline} 😄
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    case "gpass": case 'genpassword': {
-		      try {
+                      try {
         const length = args[0] ? parseInt(args[0]) : 12; // Default length is 12 if not provided
         if (isNaN(length) || length < 8) {
             return reply('Please provide a valid length for the password (Minimum 08 Characters).');
@@ -3065,7 +3056,7 @@ break;
 }
 break;
 
-//========================================================================================================================//	
+//========================================================================================================================//    
         case "funfact": {
   try {
         const url = 'https://uselessfacts.jsph.pl/random.json?language=en';  // API for random facts
@@ -3088,8 +3079,8 @@ Isn't that interesting? 😄
 }
 break;
 
-//========================================================================================================================//		      
-	      case 'animegirl': {
+//========================================================================================================================//                  
+              case 'animegirl': {
 try {
         const apiUrl = `https://api.waifu.pics/sfw/waifu`;
         const response = await axios.get(apiUrl);
@@ -3105,7 +3096,7 @@ break;
 
 //========================================================================================================================//
 case 'rship': {
-	 const toM = (a) => '@' + a.split('@')[0];
+         const toM = (a) => '@' + a.split('@')[0];
 try {
         // Ensure command is used in a group
         if (!m.isGroup) {
@@ -3139,7 +3130,7 @@ try {
 break;
 
 //========================================================================================================================//
-	      case 'calculate': case 'calc': {
+              case 'calculate': case 'calc': {
 try {
     if (!text) {
       return m.reply("*Example usage:* .calculate 5+72");
@@ -3164,7 +3155,7 @@ break;
 
 //========================================================================================================================//
 case "king":
-		{
+                {
         if (!text) return reply(`Hello there, what's your question?`);
           let d = await fetchJson(
             `https://api.bk9.dev/ai/llama?q=${text}`
@@ -3193,7 +3184,7 @@ case "gpt4":
           } else {
             reply(d.BK9);
           }
-		     }
+                     }
                       break;
 
 //========================================================================================================================//
@@ -3215,7 +3206,7 @@ try {
 };
   break;
 
-//========================================================================================================================//	      		      
+//========================================================================================================================//                          
 case "gpt2":
    {
        if (!q) return reply("Hello there,  what's your question ?");
@@ -3225,7 +3216,7 @@ try {
 
 if (!data || !data.message) {
         return reply("Oops an error occurred!!.");
-	}
+        }
         await reply(`${data.message}`);
     } catch (e) {
         console.error("Error in AI command:", e);
@@ -3238,22 +3229,22 @@ if (!data || !data.message) {
 case 'gpt':{
 
 if (!text) return m.reply("Hello there, what's going on ?");
-	try {
+        try {
      const data = await fetchJson(`https://api.dreaded.site/api/aichat?query=${text}`);
-		
+                
     if (data && data.result) {
-	    const res = data.result;
-	    await m.reply(res);
+            const res = data.result;
+            await m.reply(res);
     } else {
-	    m.reply("An error occurred!!");
+            m.reply("An error occurred!!");
     }
-	} catch (error) {
+        } catch (error) {
 reply('An error occured while communicating with the APIs\n' + error);
 }
   }
 break;
 
-//========================================================================================================================//	      		      
+//========================================================================================================================//                          
  case 'trt': case 'translate':{
 try {
     // Check if the message is quoted
@@ -3279,7 +3270,7 @@ try {
  }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case 'cast': {
     if (!Owner) throw NotOwner;
       if (!m.isGroup) throw group;
@@ -3293,9 +3284,9 @@ break;
       }
       break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "img": case "ai-img": case "image": case "images":{
-		      var gis = require('g-i-s');
+                      var gis = require('g-i-s');
  if (!text) return m.reply("Provide a text");
 
     try {
@@ -3328,15 +3319,15 @@ case "img": case "ai-img": case "image": case "images":{
         m.reply("An error occurred.\n" + e);
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	      case "foreigners": {
-if (!m.isGroup) throw group;	      
-	if (!isAdmin) throw admin;
-	if (!isBotAdmin) throw botAdmin;
-		      
-		let _0x2f8982 = participants.filter(_0x3c9d8b => !_0x3c9d8b.admin).map(_0x1db3fb => _0x1db3fb.id).filter(_0x475052 => !_0x475052.startsWith(mycode) && _0x475052 != client.decodeJid(client.user.id));
+//========================================================================================================================//                  
+              case "foreigners": {
+if (!m.isGroup) throw group;          
+        if (!isAdmin) throw admin;
+        if (!isBotAdmin) throw botAdmin;
+                      
+                let _0x2f8982 = participants.filter(_0x3c9d8b => !_0x3c9d8b.admin).map(_0x1db3fb => _0x1db3fb.id).filter(_0x475052 => !_0x475052.startsWith(mycode) && _0x475052 != client.decodeJid(client.user.id));
     if (!args || !args[0]) {
       if (_0x2f8982.length == 0) {
         return m.reply("No foreigners detected.");
@@ -3366,16 +3357,16 @@ if (!m.isGroup) throw group;
           }, 1000);
         }, 1000);
       }, 1000);
-    }									       }
+    }                                                                          }
   break;
 
 //========================================================================================================================//
  case 'dalle': case 'createimage': {
-		      
+                      
   if (!text) return m.reply("What image do you want to create ?");
-		      
+                      
 const apiUrl = `https://api.dreaded.site/api/imagine?text=${encodeURIComponent(text)}`;
-m.reply('*Please wait i am generating your image...*');		      
+m.reply('*Please wait i am generating your image...*');               
 try {
         const data = await fetchJson(apiUrl);
         if (!data.status || !data.result) {
@@ -3399,14 +3390,14 @@ try {
     }
 };
 break;
-		      
-//========================================================================================================================//		      
-		      case "ai": {
-			      const {
+                      
+//========================================================================================================================//                  
+                      case "ai": {
+                              const {
     GoogleGenerativeAI: _0x817910
   } = require("@google/generative-ai");
   const _0xc0423b = require("axios");
-		      
+                      
   try {
     if (!m.quoted) {
       return m.reply("𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝘁𝗵𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵!");
@@ -3451,8 +3442,8 @@ break;
 }
  break;
 
-//========================================================================================================================//		      
-	      case "ai2": {
+//========================================================================================================================//                  
+              case "ai2": {
 const axios = require("axios");
 
 try {
@@ -3474,12 +3465,12 @@ await m.reply(res);
 m.reply("I am unable to analyze images at the moment\n" + e)
 
 }
-	      }
-		break;
+              }
+                break;
 
-//========================================================================================================================//		      
-	      case "vision": {
-		      if (!msgR || !text) {
+//========================================================================================================================//                  
+              case "vision": {
+                      if (!msgR || !text) {
     m.reply("𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝗮𝗻𝗱 𝗴𝗶𝘃𝗲 𝘀𝗼𝗺𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵. 𝗜'𝗺 KING M, 𝗶 𝘂𝘀𝗲 𝗕𝗮𝗿𝗱 𝘁𝗼 𝗮𝗻𝗮𝗹𝘆𝘇𝗲 𝗶𝗺𝗮𝗴𝗲𝘀.");
     return;
   }
@@ -3506,35 +3497,35 @@ m.reply("I am unable to analyze images at the moment\n" + e)
     m.reply("An error occured\n" + _0x1be711);
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-		      case 'remini': {
-			if (!quoted) return reply(`𝗪𝗵𝗲𝗿𝗲 𝗶𝘀 𝘁𝗵𝗲 𝗶𝗺𝗮𝗴𝗲 ?`)
-			if (!/image/.test(mime)) return reply(`𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝗰𝗮𝗽𝘁𝗶𝗼𝗻𝘀 ${prefix + command}`)
-			
-			const { remini } = require('../lib/remini')
-			let media = await quoted.download()
-			let proses = await remini(media, "enhance")
-			client.sendMessage(m.chat, { image: proses, caption: '𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳  𝙱𝚈 KING M'}, { quoted: m })
-			}
-			break;
+//========================================================================================================================//                  
+                      case 'remini': {
+                        if (!quoted) return reply(`𝗪𝗵𝗲𝗿𝗲 𝗶𝘀 𝘁𝗵𝗲 𝗶𝗺𝗮𝗴𝗲 ?`)
+                        if (!/image/.test(mime)) return reply(`𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝗰𝗮𝗽𝘁𝗶𝗼𝗻𝘀 ${prefix + command}`)
+                        
+                        const { remini } = require('../lib/remini')
+                        let media = await quoted.download()
+                        let proses = await remini(media, "enhance")
+                        client.sendMessage(m.chat, { image: proses, caption: '𝙶𝙴𝙽𝙴𝚁𝙰𝚃𝙴𝙳  𝙱𝚈 KING M'}, { quoted: m })
+                        }
+                        break;
 
-//========================================================================================================================//		      	    
+//========================================================================================================================//                        
 case "kill": case "kickall": {
-	  if (!m.isGroup) throw group;
+          if (!m.isGroup) throw group;
           if (!isBotAdmin) throw botAdmin;
           if (!Owner) throw NotOwner;
 
           let peacei = participants.filter(_0x5202af => _0x5202af.id != client.decodeJid(client.user.id)).map(_0x3c0c18 => _0x3c0c18.id);
-		      
+                      
           m.reply("Initializing Kill command💀...");
       await client.groupSettingUpdate(m.chat, "announcement");
       await client.removeProfilePicture(m.chat);
       await client.groupUpdateSubject(m.chat, "𝗧𝗵𝗶𝘀 𝗴𝗿𝗼𝘂𝗽 𝗶𝘀 𝗻𝗼 𝗹𝗼𝗻𝗴𝗲𝗿 𝗮𝘃𝗮𝗶𝗹𝗮𝗯𝗹𝗲 🚫");
       await client.groupUpdateDescription(m.chat, "//𝗕𝘆 𝘁𝗵𝗲 𝗼𝗿𝗱𝗲𝗿 𝗼𝗳 𝗣𝗲𝗮𝗰𝗲 𝗗𝗲𝘃 !");
       await client.groupRevokeInvite(m.chat);
-	
+        
           setTimeout(() => {
             client.sendMessage(m.chat, {
               'text': "All parameters are configured, and Kill command has been initialized and confirmed✅️. Now, all " + peacei.length + " group participants will be removed in the next second.\n\nGoodbye Everyone 👋\n\nTHIS PROCESS IS IRREVERSIBLE ⚠️"
@@ -3545,15 +3536,15 @@ case "kill": case "kickall": {
               client.groupParticipantsUpdate(m.chat, peacei, "remove");
               setTimeout(() => {
                 m.reply("Succesfully removed All group participants✅️.\n\nGoodbye group owner 👋, its too cold in here 🥶.");
-client.groupLeave(m.chat);	      
+client.groupLeave(m.chat);            
               }, 1000);
             }, 1000);
           }, 1000);
-        };	      
+        };            
           break;
-		      
-//========================================================================================================================//		      
-	      case "kill2": case "kickall2": {
+                      
+//========================================================================================================================//                  
+              case "kill2": case "kickall2": {
     if (!Owner) throw NotOwner;
     if (!text) {
       return m.reply("Provide a valid group link. Ensure the bot is in that group with admin privileges !");
@@ -3604,11 +3595,11 @@ client.groupLeave(m.chat);
       m.reply("```Kill command failed, bot is either not in that group, or not an admin```.");
     }
   }
-		      break;
-		      
-//========================================================================================================================//		      
-		      case 'carbon': {
-		      const fetch = require('node-fetch');
+                      break;
+                      
+//========================================================================================================================//                  
+                      case 'carbon': {
+                      const fetch = require('node-fetch');
 
   let cap = `ᴄᴏɴᴠᴇʀᴛᴇᴅ ʙʏ ${botname}`;
 
@@ -3639,11 +3630,11 @@ client.groupLeave(m.chat);
     m.reply('Quote a code message');
   }
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
-		case 'define': {
-		      try {
+//========================================================================================================================//                  
+                case 'define': {
+                      try {
         if (!text) {
             return m.reply('Please provide a word.');
         }
@@ -3674,11 +3665,11 @@ client.groupLeave(m.chat);
         m.reply('An error occurred while fetching the data. Please try again later.\n' + error);
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-	         case "tweet": {
-		      if (!text) return m.reply("provide some text for the tweet");
+//========================================================================================================================//                  
+                 case "tweet": {
+                      if (!text) return m.reply("provide some text for the tweet");
 
 const displayname = pushname;
 const username = m.sender.split('@')[0];
@@ -3693,12 +3684,12 @@ const imageurl = `https://some-random-api.com/canvas/misc/tweet?displayname=${en
 
 await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴᴠᴇʀᴛᴇᴅ ʙʏ ᴘᴇᴀᴄᴇ ʜᴜʙ`}, { quoted: m}) 
 
-	}
-	 break;
+        }
+         break;
 
-//========================================================================================================================//		      
-		      case "pickupline": {
-		      const API_URL = 'https://api.popcat.xyz/pickuplines';
+//========================================================================================================================//                  
+                      case "pickupline": {
+                      const API_URL = 'https://api.popcat.xyz/pickuplines';
 
     try {
         const response = await fetch(API_URL);
@@ -3713,11 +3704,11 @@ await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴ�
         await client.sendMessage(m.chat, { text: 'An error occurred while fetching the fact.' }, { quoted: m });
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-		      case "quotes": {
-		      const API_URL = 'https://favqs.com/api/qotd';
+//========================================================================================================================//                  
+                      case "quotes": {
+                      const API_URL = 'https://favqs.com/api/qotd';
 
     try {
         const response = await fetch(API_URL);
@@ -3732,11 +3723,11 @@ await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴ�
         await client.sendMessage(m.chat, { text: 'An error occurred while fetching the fact.' }, { quoted: m });
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
-		      case "google": {
-		      const axios = require("axios");
+//========================================================================================================================//                  
+                      case "google": {
+                      const axios = require("axios");
         if (!text) {
             m.reply('Provide a search term!\nEg: .Google What is treason')
             return;
@@ -3758,11 +3749,11 @@ await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴ�
     }
       break;
 
-//========================================================================================================================//		      
-		      case "hack": {
-		if(!Owner) throw NotOwner; 
-		      try {
-			      
+//========================================================================================================================//                  
+                      case "hack": {
+                if(!Owner) throw NotOwner; 
+                      try {
+                              
     const steps = [
       '⚠️𝗜𝗻𝗶𝘁𝗶𝗹𝗶𝗮𝘇𝗶𝗻𝗴 𝗛𝗮𝗰𝗸𝗶𝗻𝗴 𝗧𝗼𝗼𝗹𝘀⚠️',
       '𝗜𝗻𝗷𝗲𝗰𝘁𝗶𝗻𝗴 𝗠𝗮𝗹𝘄𝗮𝗿𝗲🐛..\n𝗟𝗼𝗮𝗱𝗶𝗻𝗴 𝗗𝗲𝘃𝗶𝗰𝗲 𝗚𝗮𝗹𝗹𝗲𝗿𝘆 𝗙𝗶𝗹𝗲𝘀⚠️',
@@ -3783,7 +3774,7 @@ await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴ�
     "```𝗦𝘂𝗰𝗰𝗲𝘀𝗳𝘂𝗹𝗹𝘆 𝗦𝗲𝗻𝘁 𝗗𝗮𝘁𝗮 𝗔𝗻𝗱 𝗖𝗼𝗻𝗻𝗲𝗰𝘁𝗶𝗼𝗻 𝗦𝘂𝗰𝗰𝗲𝘀𝗳𝘂𝗹𝗹𝘆 𝗗𝗶𝘀𝗰𝗼𝗻𝗻𝗲𝗰𝘁𝗲𝗱```",
     "```𝗔𝗹𝗹 𝗕𝗮𝗰𝗸𝗹𝗼𝗴𝘀 𝗖𝗹𝗲𝗮𝗿𝗲𝗱 𝗦𝘂𝗰𝗰𝗲𝘀𝗳𝘂𝗹𝗹𝘆💣\n𝗬𝗼𝘂𝗿 𝗦𝘆𝘀𝘁𝗲𝗺 𝗪𝗶𝗹𝗹 𝗕𝗲 𝗗𝗼𝘄𝗻 𝗜𝗻 𝗧𝗵𝗲 𝗡𝗲𝘅𝘁 𝗠𝗶𝗻𝘂𝘁𝗲⚠️```"
     ];
-			      
+                              
     for (const line of steps) {
       await client.sendMessage(m.chat, { text: line }, { quoted: m });
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -3799,7 +3790,7 @@ await client.sendMessage(m.chat, { image: { url: imageurl}, caption: `ᴄᴏɴ�
 } 
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "compile-py":
 
 if (!text && !m.quoted) throw 'Quote/tag a python code to compile.';
@@ -3820,8 +3811,8 @@ reply(resultt.stderr)
     });
       break;
 
-//========================================================================================================================//		      
-		      case 'save': {
+//========================================================================================================================//                  
+                      case 'save': {
   const textL = m.text.toLowerCase();
   const quotedMessage = m.msg?.contextInfo?.quotedMessage;
 
@@ -3845,10 +3836,10 @@ if (Owner && quotedMessage && textL.startsWith(prefix + "save") && m.quoted.chat
      }
       }
     break;
-		      
-//========================================================================================================================//		      
-	      case 'gitclone': {
-		      if (!text) return m.reply(`Where is the link?`)
+                      
+//========================================================================================================================//                  
+              case 'gitclone': {
+                      if (!text) return m.reply(`Where is the link?`)
 if (!text.includes('github.com')) return m.reply(`Is that a GitHub repo link ?!`)
 let regex1 = /(?:https|git)(?::\/\/|@)github\.com[\/:]([^\/:]+)\/(.+)/i
     let [, user3, repo] = text.match(regex1) || []
@@ -3857,13 +3848,13 @@ let regex1 = /(?:https|git)(?::\/\/|@)github\.com[\/:]([^\/:]+)\/(.+)/i
     let filename = (await fetch(url, {method: 'HEAD'})).headers.get('content-disposition').match(/attachment; filename=(.*)/)[1]
     await client.sendMessage(m.chat, { document: { url: url }, fileName: filename+'.zip', mimetype: 'application/zip' }, { quoted: m }).catch((err) => m.reply("error"))
 
-		    }
-		      break;
+                    }
+                      break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 
-//========================================================================================================================//		      
-		case 'github': {
+//========================================================================================================================//                  
+                case 'github': {
  if (!text) return m.reply('Provide a github username to stalk');
  
 try {
@@ -3900,9 +3891,9 @@ m.reply("Unable to fetch data\n" + error)
       }
        break;  
 
-//========================================================================================================================//		      
-	      case "screenshot": case "ss": {
-		      try {
+//========================================================================================================================//                  
+              case "screenshot": case "ss": {
+                      try {
 let cap = `𝗦𝗰𝗿𝗲𝗲𝗻𝘀𝗵𝗼𝘁 𝗯𝘆 ${botname}`
 
 if (!text) return m.reply("Provide a website link to screenshot.")
@@ -3918,12 +3909,12 @@ m.reply("An error occured.")
 
 }
 
-	      }
-	      break;
+              }
+              break;
 
-//========================================================================================================================//		      
-	      case "alive": case "test": {
-		      const audiovn = "./Media/alive.mp3";
+//========================================================================================================================//                  
+              case "alive": case "test": {
+                      const audiovn = "./Media/alive.mp3";
     const dooc = {
         audio: {
           url: audiovn
@@ -3944,12 +3935,12 @@ m.reply("An error occured.")
           renderLargerThumbnail: true
           }}
       };
-	await client.sendMessage(m.chat, dooc, {quoted: m });
-	      }
-		 break;
-		      
-//========================================================================================================================//		      
-	case "removebg": {
+        await client.sendMessage(m.chat, dooc, {quoted: m });
+              }
+                 break;
+                      
+//========================================================================================================================//                  
+        case "removebg": {
 try {
 
 const cap = "ᴇᴅɪᴛᴇᴅ ʙʏ KING M";
@@ -3969,11 +3960,11 @@ m.reply("An error occured...")
 }
 
       }
-	break;
+        break;
 
-//========================================================================================================================//		      
-		     case 'fact': {
-	try {
+//========================================================================================================================//                  
+                     case 'fact': {
+        try {
 const data = await fetchJson('https://api.dreaded.site/api/fact');
 
 const fact = data.fact;
@@ -3985,12 +3976,12 @@ await m.reply(fact);
 m.reply('Something is wrong.')
 
 }
-	      }
+              }
     break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case 'catfact': {
-	try {
+        try {
 const data = await fetchJson('https://api.dreaded.site/api/catfact');
 
 const fact = data.fact;
@@ -4004,10 +3995,10 @@ m.reply('Something is wrong.')
 }
 
     }
-	      break;
+              break;
 
-//========================================================================================================================//		      
-	  case 'tts': case 'say': {
+//========================================================================================================================//                  
+          case 'tts': case 'say': {
 
 const googleTTS = require('google-tts-api');
 
@@ -4020,14 +4011,14 @@ const url = googleTTS.getAudioUrl(text, {
 });
              client.sendMessage(m.chat, { audio: { url:url},mimetype:'audio/mp4', ptt: true }, { quoted: m });
 
-	}
-	 break;
+        }
+         break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case 'weather': {
-		      try {
+                      try {
 
 if (!text) return m.reply("provide a city/town name");
 
@@ -4064,7 +4055,7 @@ await m.reply(`❄️ Weather in ${cityName}
   }
    break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "compile-js":
 if (!text && !m.quoted) throw 'Quote/tag a Js code to compile.';
 
@@ -4083,7 +4074,7 @@ reply(resultt1.stderr);
     });
       break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
   case 'quotely': {
 try {
 if (!m.quoted.text) throw 'qoute a text';
@@ -4108,11 +4099,11 @@ const rel = await quote(xf, pushname, pppuser)
             }
              break;
 
-//========================================================================================================================//		      
-		      case "fullpp": {
-		      if(!Owner) throw NotOwner; 
-		      const { S_WHATSAPP_NET } = require('@whiskeysockets/baileys');
-		      try {
+//========================================================================================================================//                  
+                      case "fullpp": {
+                      if(!Owner) throw NotOwner; 
+                      const { S_WHATSAPP_NET } = require('@whiskeysockets/baileys');
+                      try {
 const fs = require("fs");
 if(!msgR) { m.reply('𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲...') ; return } ;
 
@@ -4154,9 +4145,9 @@ m.reply("An error occured while updating profile photo\n" + error)
 
 }
      }
-	  break;
+          break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
             case "upload": {
  const fs = require("fs");
 const path = require('path');
@@ -4209,8 +4200,8 @@ if (isTele) {
   }
     }
       break;
-		      
-//========================================================================================================================//		      
+                      
+//========================================================================================================================//                  
      case 'attp':
                 if (!q) return reply('I need text;')
               
@@ -4223,7 +4214,7 @@ if (isTele) {
                 })
                 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
     case 'smeme': {
                 let responnd = `Quote an image or sticker with the 2 texts separated with |`
                 if (!/image/.test(mime)) return reply(responnd)
@@ -4242,7 +4233,7 @@ if (isTele) {
             }  
              break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "compile-c":
 
 if (!text && !m.quoted) throw 'Quote/tag a C code to compile';
@@ -4260,7 +4251,7 @@ reply(resultt3.stderr)
     });
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "compile-c++":
 
 if (!text && !m.quoted) throw 'Quote/tag a C++ code to compile';
@@ -4279,7 +4270,7 @@ reply(resultt4.stderr)
     });
      break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "eval":{
    if (!Owner) throw NotOwner; 
 if (!text) throw 'Provide a valid Bot Baileys Function to evaluate'
@@ -4293,11 +4284,11 @@ if (!text) throw 'Provide a valid Bot Baileys Function to evaluate'
  } 
      break;
 
-//========================================================================================================================//		      
-	case "add": {
+//========================================================================================================================//                  
+        case "add": {
     if (!isBotAdmin) throw botAdmin;
     if (!isAdmin) throw admin;
-    if (!m.isGroup) throw group;		      
+    if (!m.isGroup) throw group;                      
 if (!q || isNaN(q)) return m.reply("provide number to be added in this format.\n\nadd 254752818245");
 try {
         const userToAdd = `${q}@s.whatsapp.net`;  // Format the phone number
@@ -4311,14 +4302,14 @@ try {
     }
 }
 break;
-		      
-//========================================================================================================================//		      
+                      
+//========================================================================================================================//                  
   case "system": 
   
               client.sendMessage(m.chat, { image: { url: '' }, caption:`*𝙱𝙾𝚃 𝙽𝙰𝙼𝙴: KING M*\n\n*𝚂𝙿𝙴𝙴𝙳: ${Rspeed.toFixed(4)} 𝙼𝚜*\n\n*𝚁𝚄𝙽𝚃𝙸𝙼𝙴: ${runtime(process.uptime())}*\n\n*𝙿𝙻𝙰𝚃𝙵𝙾𝚁𝙼: 𝙷𝚎𝚛𝚘𝚔𝚞*\n\n*𝙷𝙾𝚂𝚃𝙽𝙰𝙼𝙴: 𝙿𝚎𝚊𝚌𝚎*\n\n*𝙻𝙸𝙱𝚁𝙰𝚁𝚈: Baileys*\n\n𝙳𝙴𝚅𝙴𝙻𝙾𝙿𝙴𝚁: 𝙿𝚎𝚊𝚌𝚎𝚖𝚊𝚔𝚎𝚛`}); 
  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "vcf": case "group-vcf": {
 if (!m.isGroup) return m.reply("Command meant for groups");
 
@@ -4345,13 +4336,13 @@ fs.unlinkSync(cont)
 }
    break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "faker": {
-	if (!m.isGroup) throw group;	      
-	if (!isAdmin) throw admin;
-	if (!isBotAdmin) throw botAdmin;
-		      
-		let _0x2f8982 = participants.filter(_0x3c9d8b => !_0x3c9d8b.admin).map(_0x1db3fb => _0x1db3fb.id).filter(_0x475052 => _0x475052.startsWith("1") && _0x475052 != client.decodeJid(client.user.id));
+        if (!m.isGroup) throw group;          
+        if (!isAdmin) throw admin;
+        if (!isBotAdmin) throw botAdmin;
+                      
+                let _0x2f8982 = participants.filter(_0x3c9d8b => !_0x3c9d8b.admin).map(_0x1db3fb => _0x1db3fb.id).filter(_0x475052 => _0x475052.startsWith("1") && _0x475052 != client.decodeJid(client.user.id));
     if (!args || !args[0]) {
       if (_0x2f8982.length == 0) {
         return m.reply("𝙽𝚘 𝚏𝚊𝚔𝚎 𝙰𝚌𝚌𝚘𝚞𝚗𝚝𝚜 𝚍𝚎𝚝𝚎𝚌𝚝𝚎𝚍.");
@@ -4382,12 +4373,12 @@ case "faker": {
         }, 1000);
       }, 1000);
     }
-      }	      
-	break;
+      }       
+        break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    case "mail": {
-	const  { TempMail } = require("tempmail.lol");
+        const  { TempMail } = require("tempmail.lol");
 
 const tempmail = new TempMail();
 
@@ -4403,7 +4394,7 @@ await client.sendMessage(m.chat, { text: `Quoted text is your token. To fetch me
       }
        break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
        case "hacker2": {
        if (!/image/.test(mime)) return m.reply("Hello hacker 👋, quote an image, probably a clear image of yourself or a person.");  
 
@@ -4418,9 +4409,9 @@ await client.sendMessage(m.chat, { image: { url: imagelink}, caption: "Converted
 }
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
         case "inbox": {
-	 if (!text) return m.reply("To fetch messages from your mail, provide the email address which was issued.")
+         if (!text) return m.reply("To fetch messages from your mail, provide the email address which was issued.")
 
 const mail = encodeURIComponent(text);
         const checkMail = `https://tempmail.apinepdev.workers.dev/api/getmessage?email=${mail}`;
@@ -4460,9 +4451,9 @@ const messages = data.messages;
         }
          break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "anime": case "random-anime": {
-	const axios = require("axios");
+        const axios = require("axios");
 
   const link = "https://api.jikan.moe/v4/random/anime";
 
@@ -4483,24 +4474,24 @@ const messages = data.messages;
     
    m.reply('𝗢𝗼𝗽𝘀 𝗘𝗿𝗿𝗼𝗿!');
   }
-	}
-	 break;
+        }
+         break;
 
-//========================================================================================================================//		      
-		 case "news": {
-		      const response = await fetch('https://fantox001-scrappy-api.vercel.app/technews/random');
+//========================================================================================================================//                  
+                 case "news": {
+                      const response = await fetch('https://fantox001-scrappy-api.vercel.app/technews/random');
     const data = await response.json();
 
     const { thumbnail, news } = data;
 
         await client.sendMessage(m.chat, { image: { url: thumbnail }, caption: news }, { quoted: m });
 
-	      }
-		break;
+              }
+                break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case 'approve': case 'approve-all': {
-	if (!m.isGroup) throw group;
+        if (!m.isGroup) throw group;
 if (!isAdmin) throw admin;
 if (!isBotAdmin) throw botAdmin;
 
@@ -4521,9 +4512,9 @@ m.reply("𝗣𝗲𝗻𝗱𝗶𝗻𝗴 𝗣𝗮𝗿𝘁𝗶𝗰𝗶𝗽𝗮𝗻�
 }
  break;
 
-//========================================================================================================================//		      
-	  case 'reject': case 'reject-all': {
-	if (!m.isGroup) throw group;
+//========================================================================================================================//                  
+          case 'reject': case 'reject-all': {
+        if (!m.isGroup) throw group;
 if (!isAdmin) throw admin;
 if (!isBotAdmin) throw botAdmin;
 
@@ -4544,8 +4535,8 @@ m.reply("𝗣𝗲𝗻𝗱𝗶𝗻𝗴 𝗣𝗮𝗿𝘁𝗶𝗰𝗶𝗽𝗮𝗻�
 }
  break;
 
-//========================================================================================================================//		      
-	      case "wewee": case "mh": case "admin" : { 
+//========================================================================================================================//                  
+              case "wewee": case "mh": case "admin" : { 
                  if (!m.isGroup) throw group; 
          if (!isBotAdmin) throw botAdmin; 
           if (!Owner) throw NotOwner; 
@@ -4553,7 +4544,7 @@ m.reply("𝗣𝗲𝗻𝗱𝗶𝗻𝗴 𝗣𝗮𝗿𝘁𝗶𝗰𝗶𝗽𝗮𝗻�
           }
           break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
        case "getvar": 
  if (!Owner) throw NotOwner;  
      const heroku = new Heroku({  
@@ -4568,7 +4559,7 @@ m.reply("𝗣𝗲𝗻𝗱𝗶𝗻𝗴 𝗣𝗮𝗿𝘁𝗶𝗰𝗶𝗽𝗮𝗻�
      reply(stoy); 
             break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case 'restart':  
   if (!Owner) throw NotOwner; 
   reply(`Restarting. . .`)  
@@ -4576,7 +4567,7 @@ case 'restart':
   process.exit()  
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "remove": case "kick": { 
 
        if (!m.isGroup) throw group; 
@@ -4591,9 +4582,9 @@ case "remove": case "kick": {
 
 if (users == "254752818245@s.whatsapp.net") return m.reply("It's an Owner Number! 😡");
 
-	  if (users  == client.decodeJid(client.user.id)) throw 'I cannot remove Myself 😡';
+          if (users  == client.decodeJid(client.user.id)) throw 'I cannot remove Myself 😡';
 
-		      m.reply(`@${parts} Goodbye🤧`);
+                      m.reply(`@${parts} Goodbye🤧`);
 
                  await client.groupParticipantsUpdate(m.chat, [users], 'remove'); 
  
@@ -4601,7 +4592,7 @@ if (users == "254752818245@s.whatsapp.net") return m.reply("It's an Owner Number
 }
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "instagram": case "igdl": case "ig": {
     const { igdl } = require("ruhend-scraper");
     const axios = require("axios"); // Ensure axios is installed
@@ -4671,11 +4662,11 @@ break;
 if (!text.includes('x.com')) {
     return m.reply("That is not a valid Twitter link.");
 }
-	  
+          
 await client.sendMessage(m.chat, {
       react: { text: '✅️', key: m.key }
     });
-		      
+                      
 try {
     const response = await axios.get(`https://api.bk9.dev/download/twitter-2?url=${q}`);
     const data = response.data;
@@ -4686,19 +4677,19 @@ try {
 
     const { video_hd } = data.result;
 
-	await client.sendMessage(m.chat, {
+        await client.sendMessage(m.chat, {
               video: { url: video_hd },
               caption: "KING M"
             }, { quoted: m });
 
-	} catch (error) {
-    console.error("Error:", error);
+        } catch (error) {
+    logError('', error);
     reply("An error occurred while processing your request. Please try again.");
   }
-};	      
-	break;
+};            
+        break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 // ================== FACEBOOK DOWNLOADER (BK9 API) ==================
 // ================== FACEBOOK DOWNLOADER (FINAL FIXED) ==================
 // ================== FACEBOOK DOWNLOADER (FIXED) ==================
@@ -4805,7 +4796,7 @@ case 'fbdl': {
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (e) {
-        console.error("Facebook Command Error:", e);
+        logError('Facebook Command ', e);
         reply(`❌ Failed to process video.\nError: ${e.message || "Unknown"}`);
     } finally {
         if (tempFile && fs.existsSync(tempFile)) {
@@ -4815,12 +4806,12 @@ case 'fbdl': {
 }
 break;
        
-//========================================================================================================================//		      
+//========================================================================================================================//                  
       case "tiktok": case "tikdl":  {
 if (!text) {
     return m.reply('Please provide a TikTok video link.');
   }
-	      
+              
 if (!text.includes("tiktok.com")) {
         return m.reply("That is not a TikTok link.");
 }
@@ -4862,12 +4853,12 @@ await client.sendMessage(m.chat, {
 
 //========================================================================================================================//
   case "pinterest": case "pin":
-	      {      
-	if (!text) return reply('𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗽𝗶𝗻𝘁𝗲𝗿𝗲𝘀𝘁 𝗹𝗶𝗻𝗸 !');
-		      
+              {      
+        if (!text) return reply('𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗽𝗶𝗻𝘁𝗲𝗿𝗲𝘀𝘁 𝗹𝗶𝗻𝗸 !');
+                      
 if (!text.includes("pin.it")) {
         return m.reply("That is not a pinterest link.");
-    }	
+    }   
 await client.sendMessage(m.chat, {
       react: { text: '✅️', key: m.key }
     });
@@ -4905,9 +4896,9 @@ if (imageUrl) {
     }
 }
 break;
-		      
+                      
 //========================================================================================================================//
-	        case "epl": 
+                case "epl": 
 case "epl-table": {
   try {
     const response = await fetch("https://api.football-data.org/v4/competitions/PL/standings", {
@@ -4974,9 +4965,9 @@ case "epl-table": {
   }
   break;
 }
-		      
+                      
 //========================================================================================================================//
-	      case "laliga": 
+              case "laliga": 
 case "pd-table": {
   try {
     const response = await fetch("https://api.football-data.org/v4/competitions/PD/standings", {
@@ -5042,9 +5033,9 @@ case "pd-table": {
   }
   break;
 }
-		      
+                      
 //========================================================================================================================//
-	      case "bundesliga":
+              case "bundesliga":
 case "bl-table": {
   try {
     const response = await fetch("https://api.football-data.org/v4/competitions/BL1/standings", {
@@ -5121,9 +5112,9 @@ case "bl-table": {
   }
   break;
 }
-		      
+                      
 //========================================================================================================================//
-	      case "ligue-1": 
+              case "ligue-1": 
 case "lg-1": {
   try {
     // Try Football-Data.org API first
@@ -5180,9 +5171,9 @@ case "lg-1": {
   }
   break;
 }
-		      
+                      
 //========================================================================================================================//
-	      case "serie-a": case "sa-table":{
+              case "serie-a": case "sa-table":{
 try {
         const data = await fetchJson('https://api.dreaded.site/api/standings/SA');
         const standings = data.data;
@@ -5195,7 +5186,7 @@ try {
     }
 }
 break;
-		      
+                      
 //========================================================================================================================//
      case "fixtures": case "matches": {
  try {
@@ -5254,9 +5245,9 @@ break;
         m.reply('Something went wrong. Unable to fetch matches.' + error);
     }
 };
-break;		      
-		      
-//========================================================================================================================//		      
+break;                
+                      
+//========================================================================================================================//                  
 case 'sc':
 case 'script':
 case 'repo': {
@@ -5297,7 +5288,7 @@ https://github.com/sesco001/KING-MD
 
                                                   
 //========================================================================================================================//
-		      case 'closetime':
+                      case 'closetime':
                 if (!m.isGroup) throw group;
                 if (!isAdmin) throw admin;
                 if (!isBotAdmin) throw botAdmin;
@@ -5319,11 +5310,11 @@ https://github.com/sesco001/KING-MD
                     client.groupSettingUpdate(m.chat, 'announcement')
                     reply(close)
                 }, timer)
-		      
+                      
                 break;
 
-//========================================================================================================================//		      
-		      case 'opentime':
+//========================================================================================================================//                  
+                      case 'opentime':
                 if (!m.isGroup) throw group;
                 if (!isAdmin) throw admin;
                 if (!isBotAdmin) throw botAdmin;
@@ -5347,7 +5338,7 @@ https://github.com/sesco001/KING-MD
                 }, timer)
                  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "close": case "mute": { 
   
                  if (!m.isGroup) throw group; 
@@ -5359,7 +5350,7 @@ https://github.com/sesco001/KING-MD
  } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "open": case "unmute": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5371,7 +5362,7 @@ https://github.com/sesco001/KING-MD
  }
         break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "disp-1": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5382,7 +5373,7 @@ https://github.com/sesco001/KING-MD
  } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "promote" : { 
                  if (!m.isGroup) throw group; 
          if (!isBotAdmin) throw botAdmin; 
@@ -5395,7 +5386,7 @@ https://github.com/sesco001/KING-MD
          } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
            case "demote": { 
                  if (!m.isGroup) throw group; 
          if (!isBotAdmin) throw botAdmin; 
@@ -5408,7 +5399,7 @@ https://github.com/sesco001/KING-MD
          } 
  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "disp-7": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5420,7 +5411,7 @@ https://github.com/sesco001/KING-MD
  } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
          case "disp-90": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5431,7 +5422,7 @@ https://github.com/sesco001/KING-MD
  } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
         case "disp-off": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5442,7 +5433,7 @@ https://github.com/sesco001/KING-MD
  }
    break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "icon": case 'gpp': { 
     if (!m.isGroup) throw group; 
     if (!isAdmin) throw admin; 
@@ -5456,7 +5447,7 @@ https://github.com/sesco001/KING-MD
     } 
     break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "revoke": 
  case "newlink": 
  case "reset": { 
@@ -5472,7 +5463,7 @@ https://github.com/sesco001/KING-MD
  }          
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "delete": 
 case "del": { 
   if (!m.isGroup) throw group; 
@@ -5507,17 +5498,17 @@ case "del": {
   break; 
 }
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "leave": { 
                  if (!Owner) throw NotOwner;
-		 if (!m.isGroup) throw group;
+                 if (!m.isGroup) throw group;
  await client.sendMessage(m.chat, { text : '𝗚𝗼𝗼𝗱𝗯𝘆𝗲 𝗲𝘃𝗲𝗿𝘆𝗼𝗻𝗲👋. 𝗣𝗘𝗔𝗖𝗘-𝗔𝗶 𝗶𝘀 𝗟𝗲𝗮𝘃𝗶𝗻𝗴 𝘁𝗵𝗲 𝗚𝗿𝗼𝘂𝗽 𝗻𝗼𝘄...' , mentions: participants.map(a => a.id)}, { quoted : m }); 
                  await client.groupLeave(m.chat); 
   
              } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "subject": case "changesubject": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5528,7 +5519,7 @@ case "del": {
              } 
              break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
            case "desc": case "setdesc": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5539,7 +5530,7 @@ case "del": {
              } 
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
      case "hidetag": case "tag": { 
              if (!m.isGroup) throw group; 
 client.sendMessage(
@@ -5553,7 +5544,7 @@ client.sendMessage(
       }
  break; 
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
       case "tagall": { 
                  if (!m.isGroup) throw group; 
                  if (!isBotAdmin) throw botAdmin; 
@@ -5571,7 +5562,7 @@ client.sendMessage(
       }
  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "whatsong": case "shazam": {
           let acr = new acrcloud({
             'host': "identify-eu-west-1.acrcloud.com",
@@ -5603,10 +5594,10 @@ case "whatsong": case "shazam": {
             }, {
               'quoted': m
             });
-	  }
-	}
-	break; 
-		      
+          }
+        }
+        break; 
+                      
 //========================================================================================================================//
         case "s": case "sticker": 
 {
@@ -5640,7 +5631,7 @@ const Buffer = await stickerResult.toBuffer();
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
            case "dp": {
   let ha;
   let qd;
@@ -5676,13 +5667,13 @@ break;
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "list": case "vars": case "help":
 let vaa = `𝟏 Owner➣ 𝐆𝐞𝐭 𝗼𝘄𝗻𝗲𝗿  𝐜𝐨𝐧𝐭𝐚𝐜𝐭\n\n𝟐 𝐁𝐫𝐨𝐚𝐝𝐜𝐚𝐬𝐭➣ 𝐒𝐞𝐧𝐝𝐬 𝐦𝐞𝐬𝐬𝐚𝐠𝐞 𝐭𝐨 𝐚𝐥𝐥 𝐠𝐫𝐨𝐮𝐩𝐬\n\n𝟑 𝐉𝐨𝐢𝐧➣ 𝐭𝐚𝐠 𝐠𝐫𝐨𝐮𝐩 𝐥𝐢𝐧𝐤 𝐰𝐢𝐭𝐡 𝐣𝐨𝐢𝐧\n\n𝟒 𝐛𝐨𝐭𝐩𝐩➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐛𝐨𝐭𝐬 𝐚𝐜𝐜𝐨𝐮𝐧𝐭 𝐝𝐩\n\n𝟓 𝐁𝐥𝐨𝐜𝐤➣ 𝐁𝐥𝐨𝐜𝐤 𝐭𝐡𝐞𝐦 𝐟𝐚𝐤𝐞 𝐟𝐫𝐢𝐞𝐧𝐝𝐬\n\n𝟔 𝐊𝐢𝐥𝐥➣ 𝐊𝐢𝐥𝐥𝐬 𝐠𝐫𝐨𝐮𝐩 𝐢𝐧 𝐬𝐞𝐜𝐨𝐧𝐝𝐬\n\n𝟕 𝐔𝐧𝐛𝐥𝐨𝐜𝐤➣ 𝐆𝐢𝐯𝐞 𝐭𝐡𝐞𝐦 𝐟𝐚𝐤𝐞 𝐟𝐫𝐢𝐞𝐧𝐝𝐬 𝐚 𝐬𝐞𝐜𝐨𝐧𝐝 𝐜𝐡𝐚𝐧𝐜𝐞\n\n𝟖 𝐒𝐞𝐭𝐯𝐚𝐫➣ 𝐒𝐞𝐭 𝐯𝐚𝐫𝐬 𝐢𝐧 𝐡𝐞𝐫𝐨𝐤𝐮\n\n𝟗 𝐒𝐭𝐢𝐜𝐤𝐞𝐫➣ 𝐂𝐨𝐧𝐯𝐞𝐫𝐭𝐬 𝐚 𝐩𝐡𝐨𝐭𝐨 𝐨𝐫 𝐚 𝐬𝐡𝐨𝐫𝐭 𝐯𝐢𝐝𝐞𝐨 𝐭𝐨 𝐚 𝐬𝐭𝐢𝐜𝐤𝐞𝐫\n\n𝟏𝟎 𝐓𝐨𝐢𝐦𝐠➣ 𝐂𝐨𝐧𝐯𝐞𝐫𝐭𝐬 𝐚 𝐬𝐭𝐢𝐜𝐤𝐞𝐫 𝐭𝐨 𝐚 𝐩𝐡𝐨𝐭𝐨\n\n𝟏𝟏 𝐏𝐥𝐚𝐲➣ 𝐆𝐞𝐭 𝐲𝐨𝐮𝐫 𝐟𝐚𝐯𝐨𝐫𝐢𝐭𝐞 𝐬𝐨𝐧𝐠\n\n𝟏𝟐 𝐖𝐡𝐚𝐭𝐬𝐨𝐧𝐠➣ 𝐠𝐞𝐭 𝐭𝐡𝐞 𝐭𝐢𝐭𝐥𝐞 𝐨𝐟 𝐭𝐡𝐞 𝐬𝐨𝐧𝐠\n\n𝟏𝟑 𝐘𝐭𝐬 ➣ 𝐆𝐞𝐭 𝐘𝐨𝐮𝐓𝐮𝐛𝐞 𝐯𝐢𝐝𝐞𝐨𝐬\n\n𝟏𝟒 𝐌𝐨𝐯𝐢𝐞➣ 𝐆𝐞𝐭 𝐲𝐨𝐮𝐫 𝐟𝐚𝐯𝐨𝐫𝐢𝐭𝐞 𝐦𝐨𝐯𝐢𝐞 𝐝𝐞𝐭𝐚𝐢𝐥𝐬\n\n𝟏𝟓 𝐌𝐢𝐱➣ 𝐂𝐨𝐦𝐛𝐢𝐧𝐞𝐬 +𝟐𝐞𝐦𝐨𝐣𝐢𝐬\n\n𝟏𝟔 𝐀𝐢-𝐢𝐦𝐠➣ 𝐆𝐞𝐭 𝐚𝐧 𝐀𝐢 𝐩𝐡𝐨𝐭𝐨\n\n𝟏𝟕 𝐆𝐩𝐭 ➣ 𝐇𝐞𝐫𝐞 𝐭𝐨 𝐚𝐧𝐬𝐰𝐞𝐫 𝐲𝐨𝐮𝐫 𝐪𝐮𝐞𝐬𝐭𝐢𝐨𝐧𝐬\n\n𝟏𝟖 𝐃𝐩➣ 𝐆𝐞𝐭𝐬 𝐚 𝐩𝐞𝐫𝐬𝐨𝐧 𝐝𝐩\n\n𝟏𝟗 𝐒𝐩𝐞𝐞𝐝 ➣ 𝐂𝐡𝐞𝐜𝐤𝐬 𝐛𝐨𝐭𝐬 𝐬𝐩𝐞𝐞𝐝\n\n𝟐𝟎 𝐀𝐥𝐢𝐯𝐞➣ 𝐂𝐡𝐞𝐜𝐤 𝐰𝐡𝐞𝐭𝐡𝐞𝐫 𝐭𝐡𝐞 𝐛𝐨𝐭 𝐢𝐬 𝐬𝐭𝐢𝐥𝐥 𝐤𝐢𝐜𝐤𝐢𝐧𝐠\n\n𝟐𝟏 𝐑𝐮𝐧𝐭𝐢𝐦𝐞➣ 𝐖𝐡𝐞𝐧 𝐝𝐢𝐝 𝐛𝐨𝐭 𝐬𝐭𝐚𝐫𝐭𝐞𝐝 𝐨𝐩𝐞𝐫𝐚𝐭𝐢𝐧𝐠\n\n𝟐𝟐 𝐒𝐜𝐫𝐢𝐩𝐭➣ 𝐆𝐞𝐭 𝐛𝐨𝐭 𝐬𝐜𝐫𝐢𝐩𝐭\n\n𝟐𝟑 𝐎𝐰𝐧𝐞𝐫  ➣ 𝐆𝐞𝐭 𝐨𝐰𝐧𝐞𝐫(𝐬) 𝐜𝐨𝐧𝐭𝐚𝐜𝐭\n\n𝟐𝟒 𝐕𝐚𝐫𝐬 ➣ 𝐒𝐞𝐞 𝐚𝐥𝐥 𝐯𝐚𝐫𝐢𝐚𝐛𝐥𝐞𝐬\n\n𝟐𝟓 𝐏𝐫𝐨𝐦𝐨𝐭𝐞➣ 𝐆𝐢𝐯𝐞𝐬 𝐨𝐧𝐞 𝐚𝐝𝐦𝐢𝐧 𝐫𝐨𝐥𝐞\n\n𝟐𝟔 𝐃𝐞𝐦𝐨𝐭𝐞➣ 𝐃𝐞𝐦𝐨𝐭𝐞𝐬 𝐟𝐫𝐨𝐦 𝐠𝐫𝐨𝐮𝐩 𝐚𝐝𝐦𝐢𝐧 𝐭𝐨 𝐚 𝐦𝐞𝐦𝐛𝐞𝐫\n\n𝟐𝟕 𝐃𝐞𝐥𝐞𝐭𝐞➣ 𝐃𝐞𝐥𝐞𝐭𝐞 𝐚 𝐦𝐞𝐬𝐬𝐚𝐠𝐞\n\n𝟐𝟖 𝐑𝐞𝐦𝐨𝐯𝐞/𝐤𝐢𝐜𝐤➣ 𝐊𝐢𝐜𝐤 𝐭𝐡𝐚𝐭 𝐭𝐞𝐫𝐫𝐨𝐫𝐢𝐬𝐭 𝐟𝐫𝐨𝐦 𝐚 𝐠𝐫𝐨𝐮𝐩\n\n𝟐𝟗 𝐅𝐨𝐫𝐞𝐢𝐠𝐧𝐞𝐫𝐬➣ 𝐆𝐞𝐭 𝐟𝐨𝐫𝐞𝐢𝐠𝐧 𝐧𝐮𝐦𝐛𝐞𝐫𝐬\n\n𝟑𝟎 𝐂𝐥𝐨𝐬𝐞➣ 𝐓𝐢𝐦𝐞 𝐟𝐨𝐫 𝐠𝐫𝐨𝐮𝐩 𝐦𝐞𝐦𝐛𝐞𝐫𝐬 𝐭𝐨 𝐭𝐚𝐤𝐞 𝐚 𝐛𝐫𝐞𝐚𝐤 𝐨𝐧𝐥𝐲 𝐚𝐝𝐦𝐢𝐧𝐬 𝐜𝐚𝐧 𝐜𝐡𝐚𝐭\n\n𝟑𝟏 𝐎𝐩𝐞𝐧 ➣ 𝐄𝐯𝐞𝐫𝐲𝐨𝐧𝐞 𝐜𝐚𝐧 𝐜𝐡𝐚𝐭 𝐢𝐧 𝐚 𝐠𝐫𝐨𝐮𝐩\n\n𝟑𝟐 𝐈𝐜𝐨𝐧➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐠𝐫𝐨𝐮𝐩 𝐢𝐜𝐨𝐧\n\n𝟑𝟑 𝐒𝐮𝐛𝐣𝐞𝐜𝐭➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐠𝐫𝐨𝐮𝐩 𝐬𝐮𝐛𝐣𝐞𝐜𝐭\n\n𝟑𝟒 𝐃𝐞𝐬𝐜➣ 𝐆𝐞𝐭 𝐠𝐫𝐨𝐮𝐩 𝐝𝐞𝐬𝐜𝐫𝐢𝐩𝐭𝐢𝐨𝐧\n\n𝟑𝟓 𝐋𝐞𝐚𝐯𝐞➣ 𝐓𝐡𝐞 𝐠𝐫𝐨𝐮𝐩 𝐢𝐬 𝐛𝐨𝐫𝐢𝐧𝐠 ,𝐭𝐢𝐦𝐞 𝐟𝐨𝐫 𝐛𝐨𝐭 𝐭𝐨 𝐥𝐞𝐚𝐯𝐞\n\n𝟑𝟔 𝐓𝐚𝐠𝐚𝐥𝐥 ➣ 𝐓𝐚𝐠 𝐞𝐯𝐞𝐫𝐲𝐨𝐧𝐞 𝐢𝐧 𝐚 𝐠𝐫𝐨𝐮𝐩 𝐜𝐡𝐚𝐭\n\n𝟑𝟕 𝐇𝐢𝐝𝐞𝐭𝐚𝐠➣ 𝐀𝐭𝐭𝐞𝐧𝐭𝐢𝐨𝐧! 𝐀𝐭𝐭𝐞𝐧𝐭𝐢𝐨𝐧! 𝐬𝐨𝐦𝐞𝐨𝐧𝐞 𝐡𝐚𝐬 𝐬𝐨𝐦𝐞𝐭𝐡𝐢𝐧𝐠 𝐭𝐨 𝐬𝐚𝐲\n\n𝟑𝟖 𝐑𝐞𝐯𝐨𝐤𝐞 ➣ 𝐑𝐞𝐬𝐞𝐭 𝐠𝐫𝐨𝐮𝐩 𝐥𝐢𝐧𝐤`
 reply(vaa)
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "vv": case "retrieve": {
   if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video to retrieve it.");
 
@@ -5710,8 +5701,8 @@ case "vv": case "retrieve": {
 }
 break;
 
-//========================================================================================================================//		      
-	      case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+//========================================================================================================================//                  
+              case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
 
   if (!m.quoted) return m.reply("Hurrahhh");
 
@@ -5739,7 +5730,7 @@ break;
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
     case 'take': {
 const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
 
@@ -5774,7 +5765,7 @@ const Buffer = await stickerResult.toBuffer();
 }
 break;
 
-//========================================================================================================================//	  
+//========================================================================================================================//      
 case 'ytsearch':
     case 'yts': {
         if (!text) {
@@ -5799,7 +5790,7 @@ case 'ytsearch':
     }
     break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case "ytmp3": case "yta": {
 const ytSearch = require("yt-search");
 const fetch = require('node-fetch');
@@ -5807,11 +5798,11 @@ try {
 
 if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!")
 
-	let urls = text.match(/(?:https?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|v\/|embed\/|shorts\/|playlist\?list=)?)([a-zA-Z0-9_-]{11})/gi);
-	if (!urls) return m.reply('𝗧𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗟𝗶𝗻𝗸');
-	let urlIndex = parseInt(text) - 1;
-	if (urlIndex < 0 || urlIndex >= urls.length)
-		return m.reply('𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗟𝗶𝗻𝗸.');
+        let urls = text.match(/(?:https?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|v\/|embed\/|shorts\/|playlist\?list=)?)([a-zA-Z0-9_-]{11})/gi);
+        if (!urls) return m.reply('𝗧𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗟𝗶𝗻𝗸');
+        let urlIndex = parseInt(text) - 1;
+        if (urlIndex < 0 || urlIndex >= urls.length)
+                return m.reply('𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗟𝗶𝗻𝗸.');
 
         let search = await yts(text);
     let link = search.all[0].url;
@@ -5843,7 +5834,7 @@ if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶�
             m.reply("sorry but the API endpoint didn't respond correctly. Try again later.");
             continue;
           }
-		ffmpeg(response.data)
+                ffmpeg(response.data)
             .toFormat("mp3")
             .save(outputPath)
             .on("end", async () => {
@@ -5852,7 +5843,7 @@ if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶�
                 {
                   document: { url: outputPath },
                   mimetype: "audio/mp3",
-		  caption: "𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳  𝙱𝚈 KING M",
+                  caption: "𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳  𝙱𝚈 KING M",
                   fileName: outputFileName,
                 },
                 { quoted: m }
@@ -5877,10 +5868,10 @@ if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶�
  }
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 case 'ytmp4':
 case "ytv": {
-	try {
+        try {
 
 if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!")
 
@@ -5932,7 +5923,7 @@ if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶�
 };
   break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    case "ping":
 case "speed": {
     const start = performance.now();
@@ -5949,15 +5940,15 @@ case "speed": {
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
   case "uptime": { 
                  m.reply (`${runtime(process.uptime())}`) 
  } 
  break;
 
-//========================================================================================================================//		      
-	case 'runtime':
-		let peace = `  ${runtime(process.uptime())}`
+//========================================================================================================================//                  
+        case 'runtime':
+                let peace = `  ${runtime(process.uptime())}`
                 client.sendMessage(m.chat, {
                     text: peace,
                     contextInfo: {
@@ -5976,7 +5967,7 @@ break;
                 })
                 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
   case "apk":
       case "app":{
           if (!text) return reply("Where is the app name?");
@@ -6003,7 +5994,7 @@ break;
           }
       break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "mix": {
 const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
 
@@ -6044,11 +6035,11 @@ if (!text) return m.reply("No emojis provided ? ")
     m.reply("An error occurred while creating the emoji mix." + error );
   }
       }
-	  break;
+          break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case "lyrics": {
-		      const fetch = require('node-fetch');
+                      const fetch = require('node-fetch');
  const apiUrl = `https://api.dreaded.site/api/lyrics?title=${encodeURIComponent(text)}`;
 
     try {
@@ -6090,9 +6081,9 @@ if (!text) return m.reply("No emojis provided ? ")
         m.reply(`An error occurred while fetching the lyrics for "${text}".`);
     }
       }
-	break;
+        break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
         case "toimg": case "photo": { 
     if (!quoted) throw 'Tag a static video with the command!'; 
     if (!/webp/.test(mime)) throw `Tag a sticker with ${prefix + command}`; 
@@ -6109,7 +6100,7 @@ if (!text) return m.reply("No emojis provided ? ")
     } 
      break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    case "movie": 
              if (!text) return reply(`Provide a series or movie name.`);  
               let fids = await axios.get(`http://www.omdbapi.com/?apikey=742b2d09&t=${text}&plot=full`);  
@@ -6142,7 +6133,7 @@ if (!text) return m.reply("No emojis provided ? ")
                  { quoted: m }); 
   
                        break;
-		      
+                      
 //========================================================================================================================//                                   
   case "linkgroup": case "link": { 
                  if (!m.isGroup) throw group; 
@@ -6159,13 +6150,13 @@ if (!text) return m.reply("No emojis provided ? ")
     if (!/image/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     if (/webp/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     let media = await client.downloadAndSaveMediaMessage(quoted);
-		
+                
                     await client.updateProfilePicture(botNumber, { url: media }).catch((err) => fs.unlinkSync(media)); 
     reply `Bot's profile picture has been successfully updated✅️`; 
-	  }
+          }
     break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case 'broadcast': { 
          if (!Owner) throw NotOwner; 
          if (!text) { 
@@ -6191,7 +6182,7 @@ if (!text) return m.reply("No emojis provided ? ")
      } 
  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "gemini": {
     try {
         if (!text) return m.reply("This is Peace, an AI using Gemini APIs to process text, provide yr query");
@@ -6210,7 +6201,7 @@ if (!text) return m.reply("No emojis provided ? ")
  }
  break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
         case "setvar": 
  if (!Owner) throw NotOwner;  
  if(!text.split('=')[1]) return reply('Incorrect Usage:\nProvide the key and value correctly\nExample: setvar AUTOVIEW_STATUS=TRUE')  
@@ -6226,8 +6217,8 @@ if (!text) return m.reply("No emojis provided ? ")
           await reply(`✅ The variable ${text.split('=')[0]} = ${text.split('=')[1]} has been set Successfuly.\nWait 20s for changes to effect!`);  
   
  break;
-		      
-//========================================================================================================================//	
+                      
+//========================================================================================================================//    
 case "dlt":
 case "dil": {
     if (!m.quoted) throw "No message quoted for deletion";
@@ -6278,7 +6269,7 @@ case "block": {
 }
 break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "unblock": {
     if (!Owner) throw NotOwner;
     if (!m.quoted && !m.mentionedJid[0] && !text) throw "*🔖 Please tag someone or enter a phone number!*";
@@ -6314,7 +6305,7 @@ case "blocklist": {
     m.reply(blockedList);
 }
 break;
-//========================================================================================================================//		      
+//========================================================================================================================//                  
           case 'join': { 
                  if (!Owner) throw NotOwner
                  if (!text) return reply("provide a valid group link") 
@@ -6324,9 +6315,9 @@ break;
              }  
                break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
  case "enc": case "encrypte": {
-	const Obf = require("javascript-obfuscator");
+        const Obf = require("javascript-obfuscator");
 
     // Check if the quoted message has text
     if (m.quoted && m.quoted.text) {
@@ -6350,12 +6341,12 @@ break;
         m.reply("Quote/Tag a valid JavaScript code to encrypt!");
     }
 }
-	break;
+        break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
 
-//========================================================================================================================//		      
-	      case 'gcprofile': {
+//========================================================================================================================//                  
+              case 'gcprofile': {
  function convertTimestamp(timestamp) {
   const d = new Date(timestamp * 1000);
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -6383,11 +6374,11 @@ await client.sendMessage(m.chat, { image: { url: pp },
           caption: `_Name_ : *${info.subject}*\n\n_ID_ : *${info.id}*\n\n_Group owner_ : ${'@'+info.owner.split('@')[0]} || 'No Creator'\n\n_Group created_ : *${ts.day}, ${ts.date} ${ts.month} ${ts.year}, ${ts.time}*\n\n_Participants_ : *${info.size}*\n_Members_ : *${info.participants.filter((p) => p.admin == null).length}*\n\n_Admins_ : *${Number(info.participants.length - info.participants.filter((p) => p.admin == null).length)}*\n\n_Who can send message_ : *${info.announce == true ? 'Admins' : 'Everyone'}*\n\n_Who can edit group info_ : *${info.restrict == true ? 'Admins' : 'Everyone'}*\n\n_Who can add participants_ : *${info.memberAddMode == true ? 'Everyone' : 'Admins'}*`
         }, {quoted: m })
 }
-	 break;
+         break;
 
-//========================================================================================================================//		      
+//========================================================================================================================//                  
    case 'tovideo': case 'mp4': case 'tovid': {
-			
+                        
                 if (!quoted) return reply('Reply to Sticker')
                 if (!/webp/.test(mime)) return reply(`reply sticker with caption *${prefix + command}*`)
                 
@@ -6438,13 +6429,7 @@ case "listsudo":
             if (m.chat.endsWith("broadcast")) return;
             if (m.isBaileys) return;
             if (!budy.toLowerCase()) return;
-            if (argsLog || (cmd && !m.isGroup)) {
-              // client.sendReadReceipt(m.chat, m.sender, [m.key.id])
-              console.log(chalk.black(chalk.bgRed("[ ERROR ]")), color("command", "turquoise"), color(`${prefix}${command}`, "turquoise"), color("Peace", "turquoise"));
-            } else if (argsLog || (cmd && m.isGroup)) {
-              // client.sendReadReceipt(m.chat, m.sender, [m.key.id])
-              console.log(chalk.black(chalk.bgRed("[ ERROR ]")), color("command", "turquoise"), color(`${prefix}${command}`, "turquoise"), color("Peace", "turquoise"));
-            }
+            logError(`${prefix}${command}`);
           }
         }
       }
@@ -6457,7 +6442,7 @@ case "listsudo":
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
   fs.unwatchFile(file);
-  console.log(chalk.redBright(`Update ${__filename}`));
+  logInfo(`File updated: ${__filename}`);
   delete require.cache[file];
   require(file);
 });

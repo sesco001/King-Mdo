@@ -1,6 +1,6 @@
 
 { 
-   "name": "KING M", 
+   "name": "king-m", 
    "version": "3.0.0", 
    "description": "WhatsApp Multi Device Bot", 
    "main": "index.js", 

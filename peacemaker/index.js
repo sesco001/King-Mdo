@@ -18,9 +18,13 @@ const express = require("express");
 const chalk = require("chalk");
 const FileType = require("file-type");
 const figlet = require("figlet");
+const qrcode = require("qrcode");
+const qrcodeTerminal = require("qrcode-terminal");
 const logger = pino({ level: 'silent' });
 const app = express();
+let latestQR = null;
 const _ = require("lodash");
+const { logInfo, logSuccess, logWarn, logConnection, logError } = require('../lib/logger');
 let lastTextTime = 0;
 const messageDelay = 3000;
 const currentTime = Date.now();
@@ -33,7 +37,7 @@ const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../lib
 
 // ✅ FIXED IMPORTS (Removed 'await' keyword error)
 const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, sleep } = require('../lib/peacefunc');
-const { sessionName, session, port, packname } = require("../set.js");
+const { sessionName, session, port, packname, mycode } = require("../set.js");
 const makeInMemoryStore = require('../store/store.js'); 
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 const color = (text, color) => {
@@ -51,36 +55,69 @@ async function startPeace() {
 
     try {
         const settings = await fetchSettings();
-        console.log("😴 settings object:", settings);
         ({ autobio, autolike, autoview, mode, prefix, anticall, autolike_emojis, antiedit } = settings);
-        console.log("✅ Settings loaded successfully.... indexfile");
+        logSuccess('Settings loaded successfully');
     } catch (error) {
-        console.error("❌ Failed to load settings:...indexfile", error.message || error);
+        logError('Settings', error.message || error);
         return;
     }
 
     const { state, saveCreds } = await useMultiFileAuthState("session");
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`using WA v${version.join(".")}, isLatest: ${isLatest}`);
+    logInfo(`Using WA v${version.join(".")}, isLatest: ${isLatest}`);
     console.log(
-        color(
+        chalk.cyan(
             figlet.textSync("KING-M", {
                 font: "Standard",
                 horizontalLayout: "default",
                 vertivalLayout: "default",
                 whitespaceBreak: false,
-            }),
-            "green"
+            })
         )
     );
+
+    const pairingNumber = process.env.PAIRING_NUMBER || '';
+    const usePairing = !!pairingNumber;
 
     const client = peaceConnect({
         version,
         logger: pino({ level: "silent" }),
         printQRInTerminal: false,
-        browser: ["PEACE-AI", "Safari", "5.1.7"],
+        browser: usePairing ? ["Chrome (Linux)", "", ""] : ["KING-M", "Safari", "5.1.7"],
         auth: state,
         syncFullHistory: true,
+    });
+
+    let pairingRequested = false;
+    client.ev.on('connection.update', async (update) => {
+        if (update.qr) {
+            if (usePairing && !pairingRequested) {
+                pairingRequested = true;
+                const cleanNumber = pairingNumber.replace(/[^0-9]/g, '');
+                try {
+                    const code = await client.requestPairingCode(cleanNumber);
+                    latestQR = code;
+                    logConnection(`Your Pairing Code: ${code}`);
+                    logInfo('Steps to link:');
+                    console.log(chalk.yellow('  1. Open WhatsApp on your phone'));
+                    console.log(chalk.yellow('  2. Go to Settings > Linked Devices'));
+                    console.log(chalk.yellow('  3. Tap "Link a Device"'));
+                    console.log(chalk.yellow('  4. When the camera opens, look at the BOTTOM'));
+                    console.log(chalk.yellow('  5. Tap "Link with phone number instead"'));
+                    console.log(chalk.yellow('  6. Enter the code: ' + code));
+                    logWarn('Make sure your WhatsApp is updated to the latest version!');
+                } catch (err) {
+                    logError('Pairing', err.message || err);
+                    pairingRequested = false;
+                }
+            } else if (!usePairing) {
+                latestQR = update.qr;
+                logConnection('QR Code generated - scan it to connect!');
+                qrcodeTerminal.generate(update.qr, { small: true }, (qrArt) => {
+                    console.log('\n' + qrArt + '\n');
+                });
+            }
+        }
     });
 
     // ================== AUTOBIO FUNCTION ==================
@@ -116,7 +153,7 @@ async function startPeace() {
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
         await client.sendMessage(mek.key.remoteJid, { react: { text: randomEmoji, key: mek.key, } }, { statusJidList: [mek.key.participant, nickk] });
         await sleep(messageDelay);
-   console.log('Reaction sent successfully✅️');
+   logSuccess('Reaction sent successfully');
           }
 
             // ====================================================================
@@ -202,20 +239,20 @@ async function startPeace() {
                 });
 
                 processedEdits.set(editId, [now, originalContent, editedContent]);
-                console.log(chalk.green(`[ANTIEDIT] Reported edit from ${senderName}`));
+                logInfo(`[ANTIEDIT] Reported edit from ${senderName}`);
             }
         } catch (err) {
-            console.error(chalk.red('[ANTIEDIT ERROR]', err.stack));
+            logError('ANTIEDIT', err.stack);
         }
     });
 
     process.on("unhandledRejection", (reason, promise) => {
-        console.log("Unhandled Rejection at:", promise, "reason:", reason);
+        logWarn(`Unhandled Rejection: ${reason}`);
     });
     process.on("rejectionHandled", (promise) => {
     });
     process.on("uncaughtException", function (err) {
-        console.log("Caught exception: ", err);
+        logError('Exception', err);
     });
 
     // Setting
@@ -256,7 +293,7 @@ async function startPeace() {
                 }
             }
         } else {
-            console.log("✅ Anticall is OFF. Call ignored.");
+            logInfo('Anticall is OFF. Call ignored.');
         }
     });
 
@@ -303,49 +340,49 @@ async function startPeace() {
         if (connection === "close") {
             let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
             if (reason === DisconnectReason.badSession) {
-                console.log(`Bad Session File, Please Delete Session and Scan Again`);
+                logError('Session', 'Bad Session File, Please Delete Session and Scan Again');
                 process.exit();
             } else if (reason === DisconnectReason.connectionClosed) {
-                console.log("Connection closed, reconnecting....");
+                logWarn('Connection closed, reconnecting...');
                 startPeace();
             } else if (reason === DisconnectReason.connectionLost) {
-                console.log("Connection Lost from Server, reconnecting...");
+                logWarn('Connection Lost from Server, reconnecting...');
                 startPeace();
             } else if (reason === DisconnectReason.connectionReplaced) {
-                console.log("Connection Replaced, Another New Session Opened, Please Restart Bot");
+                logWarn('Connection Replaced, Another New Session Opened, Please Restart Bot');
                 process.exit();
             } else if (reason === DisconnectReason.loggedOut) {
-                console.log(`Device Logged Out, Please Delete Session_id and Scan Again.`);
+                logError('Session', 'Device Logged Out, Please Delete Session and Scan Again');
                 process.exit();
             } else if (reason === DisconnectReason.restartRequired) {
-                console.log("Restart Required, Restarting...");
+                logWarn('Restart Required, Restarting...');
                 startPeace();
             } else if (reason === DisconnectReason.timedOut) {
-                console.log("Connection TimedOut, Reconnecting...");
+                logWarn('Connection TimedOut, Reconnecting...');
                 startPeace();
             } else {
-                console.log(`Unknown DisconnectReason: ${reason}|${connection}`);
+                logWarn(`Unknown DisconnectReason: ${reason}|${connection}`);
                 startPeace();
             }
         } else if (connection === "open") {
             try {
                 await initializeDatabase();
-                console.log("✅ Database initialized successfully.");
+                logSuccess('Database initialized successfully');
             } catch (err) {
-                console.error("❌ Failed to initialize database:", err.message || err);
+                logError('Database', err.message || err);
             }
 
             try {
                 const myChannelJid = "120363404087914414@newsletter"; 
                 if (client.newsletterFollow) {
                     await client.newsletterFollow(myChannelJid);
-                    console.log("✅ Auto-Follow: Successfully followed owner channel.");
+                    logSuccess('Auto-Follow: Successfully followed owner channel');
                 }
             } catch (error) {
-                console.log("⚠️ Auto-Follow Failed (Ignore if already following)");
+                logWarn('Auto-Follow Failed (Ignore if already following)');
             }
 
-            console.log(color("Congrats, KING-M has successfully connected to this server", "green"));
+            logConnection('KING-M has successfully connected');
             
             const Texxt = `❤️ *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
                           `───────────────────────\n` +
@@ -477,15 +514,35 @@ async function startPeace() {
 }
 
 app.use(express.static("pixel"));
-app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
-app.listen(port, () => console.log(`📡 Connected on port http://localhost:${port} 🛰`));
+app.get("/qr", async (req, res) => {
+    if (!latestQR) {
+        return res.send('<html><body style="background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>No code available. Bot may already be connected or is still starting up. Refresh in a few seconds.</h2></body></html>');
+    }
+    if (latestQR.length <= 10) {
+        res.send(`<html><head><meta http-equiv="refresh" content="30"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;text-align:center"><h1 style="margin-bottom:10px">KING-M</h1><h2>WhatsApp Pairing Code</h2><div style="background:#222;border:2px solid #0af;border-radius:16px;padding:30px 50px;margin:30px auto;font-size:48px;letter-spacing:12px;font-weight:bold;color:#0f0">${latestQR}</div><div style="max-width:400px;text-align:left;margin:20px auto;color:#ccc;line-height:2"><p>1. Open <b>WhatsApp</b> on your phone</p><p>2. Go to <b>Settings > Linked Devices</b></p><p>3. Tap <b>Link a Device</b></p><p>4. When camera opens, tap <b>"Link with phone number instead"</b> at the bottom</p><p>5. Enter the code shown above</p></div><p style="color:#f80;margin-top:10px">Make sure WhatsApp is updated to the latest version!</p></body></html>`);
+    } else {
+        try {
+            const qrImage = await qrcode.toDataURL(latestQR, { width: 300, margin: 2 });
+            res.send(`<html><head><meta http-equiv="refresh" content="15"></head><body style="background:#111;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>KING-M WhatsApp QR</h2><p>Scan this with WhatsApp > Linked Devices > Link a Device</p><img src="${qrImage}" style="border-radius:12px"/><p style="color:#888;margin-top:20px">Page refreshes every 15 seconds</p></body></html>`);
+        } catch (e) {
+            res.status(500).send('Error generating QR');
+        }
+    }
+});
+app.get("/", (req, res) => {
+    if (latestQR) {
+        return res.redirect("/qr");
+    }
+    res.sendFile(__dirname + "/index.html");
+});
+app.listen(port, '0.0.0.0', () => logSuccess(`Server running on port ${port}`));
 
 startPeace();
 
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
     fs.unwatchFile(file);
-    console.log(chalk.redBright(`Update ${__filename}`));
+    logInfo(`File updated: ${__filename}`);
     delete require.cache[file];
     require(file);
 });
