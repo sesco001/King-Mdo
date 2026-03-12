@@ -143,19 +143,43 @@ async function startPeace() {
             mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
             // ================== AUTO-STATUS REACT (CRASH FIXED) ==================
-   if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-        client.readMessages([mek.key]);
-      }
-            
- if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-        const nickk = await client.decodeJid(client.user.id);
-        const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await client.sendMessage(mek.key.remoteJid, { react: { text: randomEmoji, key: mek.key, } }, { statusJidList: [mek.key.participant, nickk] });
-        await sleep(messageDelay);
-   logSuccess('Reaction sent successfully');
-          }
+   // ================== FIXED AUTO-STATUS VIEW & REACT ==================
+if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+    // 1. Mark status as read
+    await client.readMessages([mek.key]);
 
+    if (autolike === 'on') {
+        try {
+            // 2. Get your own JID correctly
+            const myJid = client.decodeJid(client.user.id);
+            
+            // 3. Define emojis
+            const emojis = ['🗿', '⌚️', '💠', '👣', '❤️‍🔥', '💯', '🔥', '💫', '🌟', '✅'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+
+            // 4. Send reaction with the required statusJidList
+            // The new library requires the participant (sender of status) 
+            // and yourself to be in the list for it to appear correctly.
+            await client.sendMessage(
+                "status@broadcast", 
+                { 
+                    react: { 
+                        text: randomEmoji, 
+                        key: mek.key 
+                    } 
+                }, 
+                { 
+                    // CRITICAL: This list tells WA who should see the reaction
+                    statusJidList: [mek.key.participant, myJid] 
+                }
+            );
+
+            logSuccess('Status Auto-Like Success');
+        } catch (err) {
+            logError('Autolike Error', err.message);
+        }
+    }
+}
             // ====================================================================
            
             // ==============================================================================
