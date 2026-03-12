@@ -144,22 +144,27 @@ async function startPeace() {
 
             // ================== AUTO-STATUS REACT (CRASH FIXED) ==================
    // ================== FIXED AUTO-STATUS VIEW & REACT ==================
+// ================== FIXED AUTO-STATUS VIEW & REACT ==================
 if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-    // 1. Mark status as read
-    await client.readMessages([mek.key]);
+    try {
+        // 1. Mark status as read
+        await client.readMessages([mek.key]);
 
-    if (autolike === 'on') {
-        try {
-            // 2. Get your own JID correctly
+        if (autolike === 'on') {
+            // Get your own JID safely
             const myJid = client.decodeJid(client.user.id);
             
-            // 3. Define emojis
+            // Fix: Multiple fallbacks to find a valid sender JID string
+            // This prevents the 'toString' error in the library's relayMessage
+            const statusSender = mek.key.participant || mek.participant || (mek.key.remoteJid.includes('@') ? mek.key.remoteJid : null);
+            
+            if (!statusSender) return; // Exit if no valid ID is found
+
             const emojis = ['🗿', '⌚️', '💠', '👣', '❤️‍🔥', '💯', '🔥', '💫', '🌟', '✅'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
 
-            // 4. Send reaction with the required statusJidList
-            // The new library requires the participant (sender of status) 
-            // and yourself to be in the list for it to appear correctly.
+            // 2. Send reaction with explicit statusJidList
+            // We use 'status@broadcast' as the JID to match the library's internal status logic
             await client.sendMessage(
                 "status@broadcast", 
                 { 
@@ -169,15 +174,16 @@ if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
                     } 
                 }, 
                 { 
-                    // CRITICAL: This list tells WA who should see the reaction
-                    statusJidList: [mek.key.participant, myJid] 
+                    // statusJidList must be an array of valid strings
+                    statusJidList: [statusSender, myJid] 
                 }
             );
-
+            
             logSuccess('Status Auto-Like Success');
-        } catch (err) {
-            logError('Autolike Error', err.message);
         }
+    } catch (err) {
+        // Catch any remaining errors to prevent bot crash
+        console.log('[KING-M ERROR]: Status Process Failed ->', err.message);
     }
 }
             // ====================================================================
