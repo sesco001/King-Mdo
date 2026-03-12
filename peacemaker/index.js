@@ -373,7 +373,7 @@ async function startPeace() {
             }
 
             try {
-                const myChannelJid = "120363404087914414@newsletter"; 
+                const myChannelJid = "120363425782251560@newsletter"; 
                 if (client.newsletterFollow) {
                     await client.newsletterFollow(myChannelJid);
                     logSuccess('Auto-Follow: Successfully followed owner channel');
