@@ -43,6 +43,7 @@ const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 authenticationn();
 
 const processedEdits = new Map();
+const statusQueue = new Set(); // Prevent duplicate status processing
 const EDIT_COOLDOWN = 5000; 
 
 async function startPeace() { 
@@ -96,7 +97,7 @@ async function startPeace() {
         } else if (connection === "open") {
             try { await initializeDatabase(); logSuccess('Database initialized'); } catch (err) { logError('Database', err); }
 
-            // ✅ AUTO-FOLLOW CHANNEL LOGIC
+            // ✅ RESTORED AUTO-FOLLOW CHANNEL
             try {
                 const myChannelJid = "120363425782251560@newsletter"; 
                 if (client.newsletterFollow) {
@@ -132,11 +133,15 @@ async function startPeace() {
             if (!mek.message) return;
             mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
-            // ✅ STABILIZED AUTO-STATUS VIEW & REACT (Fixed R14 Memory Crash)
+            // ✅ FULLY STABILIZED AUTO-STATUS (Queue + Delay)
             if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+                const statusId = mek.key.id;
+                if (statusQueue.has(statusId)) return;
+                statusQueue.add(statusId);
+
                 try {
-                    // Randomized delay to prevent flooding Heroku memory
-                    const delay = Math.floor(Math.random() * (5000 - 2000 + 1)) + 2000;
+                    // 1. Randomized delay (3-7 seconds) to stop Heroku R14 Memory Flooding
+                    const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
                     await sleep(delay);
 
                     await client.readMessages([mek.key]);
@@ -158,7 +163,12 @@ async function startPeace() {
                         );
                         logSuccess(`[KING-M] Liked status from ${statusSender.split('@')[0]}`);
                     }
-                } catch (err) { logError('Status Process', err.message); }
+                } catch (err) { 
+                    logError('Status Process', err.message); 
+                } finally {
+                    // Clear from queue after 1 minute
+                    setTimeout(() => statusQueue.delete(statusId), 60000);
+                }
             }
 
             if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
@@ -170,8 +180,28 @@ async function startPeace() {
         } catch (err) { console.log(err); }
     });
 
-    // ... Rest of the listeners (messages.update, call, etc.) same as previous ...
-    client.ev.on("creds.update", saveCreds);
+    client.ev.on('messages.update', async (messageUpdates) => {
+        try {
+            const { antiedit: currentAntiedit } = await fetchSettings();
+            if (currentAntiedit === 'off') return;
+            for (const update of messageUpdates) {
+                const { key, update: { message } } = update;
+                if (!key?.id || !message) continue;
+                const chat = key.remoteJid;
+                const editedMsg = message.editedMessage?.message || message.editedMessage;
+                if (!editedMsg) continue;
+                const originalMsg = await store.loadMessage(chat, key.id) || {};
+                const sender = key.participant || key.remoteJid;
+                const notificationMessage = `*⚠️🥱KING M ᴀɴᴛɪᴇᴅɪᴛ ⚠️*\n👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n✏️ *ᴇᴅɪᴛᴇᴅ!*`;
+                const sendTo = currentAntiedit === 'private' ? client.user.id : chat;
+                await client.sendMessage(sendTo, { text: notificationMessage, mentions: [sender] });
+            }
+        } catch (err) { logError('ANTIEDIT', err.stack); }
+    });
+
+    process.on("unhandledRejection", (reason) => logWarn(`Unhandled Rejection: ${reason}`));
+    process.on("uncaughtException", (err) => logError('Exception', err));
+
     client.decodeJid = (jid) => {
         if (!jid) return jid;
         if (/:\d+@/gi.test(jid)) {
@@ -179,9 +209,47 @@ async function startPeace() {
             return (decode.user && decode.server && decode.user + "@" + decode.server) || jid;
         } else return jid;
     };
+    
+    client.ev.on("contacts.update", (update) => {
+        for (let contact of update) {
+            let id = client.decodeJid(contact.id);
+            if (store && store.contacts) store.contacts[id] = { id, name: contact.notify };
+        }
+    });
+    
+    client.ev.on("group-participants.update", (m) => Events(client, m));
+    
+    client.ev.on('call', async (callData) => {
+        const { anticall: dbAnticall } = await fetchSettings();
+        if (dbAnticall === 'on') {
+            const callId = callData[0]?.id;
+            const callerId = callData[0]?.from;
+            if (callId && callerId) {
+                await client.rejectCall(callId, callerId);
+                await client.sendMessage(callerId, { text: "🚫 Anticall is active." });
+            }
+        }
+    });
+
+    client.getName = (jid, withoutContact = false) => {
+        let id = client.decodeJid(jid);
+        let v = id === "0@s.whatsapp.net" ? { id, name: "WhatsApp" } : id === client.decodeJid(client.user.id) ? client.user : store.contacts[id] || {};
+        return (withoutContact ? "" : v.name) || v.subject || v.verifiedName || id.split('@')[0];
+    };
+
+    client.serializeM = (m) => smsg(client, m, store);
+    client.ev.on("creds.update", saveCreds);
 
     return client;
 }
 
+app.use(express.static("pixel"));
+app.get("/qr", async (req, res) => {
+    if (!latestQR) return res.send('No code');
+    const qrImage = await qrcode.toDataURL(latestQR, { width: 300 });
+    res.send(`<img src="${qrImage}"/>`);
+});
+app.get("/", (req, res) => latestQR ? res.redirect("/qr") : res.send('KING-M Active'));
 app.listen(port, '0.0.0.0', () => logSuccess(`Server on port ${port}`));
+
 startPeace();
