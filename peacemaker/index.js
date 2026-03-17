@@ -3,53 +3,39 @@ const {
     useMultiFileAuthState,
     DisconnectReason,
     fetchLatestBaileysVersion,
-    downloadContentFromMessage,
     jidDecode,
-    proto,
-    getContentType,
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
 const fs = require("fs");
 const path = require('path');
-const axios = require("axios");
 const express = require("express");
 const chalk = require("chalk");
-const FileType = require("file-type");
 const figlet = require("figlet");
 const qrcode = require("qrcode");
 const qrcodeTerminal = require("qrcode-terminal");
 const logger = pino({ level: 'silent' });
 const app = express();
 let latestQR = null;
-const _ = require("lodash");
 
-// ✅ FIXED PATHS: Moving up one level to find 'lib', 'Database', and 'store'
+// ✅ FIXED PATHS
 const { logInfo, logSuccess, logWarn, logConnection, logError } = require('../lib/logger');
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, sleep } = require('../lib/peacefunc');
-const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../lib/peaceexif');
+const { smsg, sleep } = require('../lib/peacefunc');
 const { initializeDatabase } = require('../Database/config');
 const fetchSettings = require('../Database/fetchSettings');
 const makeInMemoryStore = require('../store/store.js'); 
 const Events = require('./events');
 const authenticationn = require('./auth');
-
-const { sessionName, session, port, packname, mycode } = require("../set.js");
-const PhoneNumber = require("awesome-phonenumber");
+const { port } = require("../set.js");
 
 // ✅ INITIALIZE STORE
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 const storePath = path.join(__dirname, '../store/store.json');
 
-// PERSISTENT STORAGE
 try {
-    if (fs.existsSync(storePath)) {
-        store.readFromFile(storePath);
-    }
-} catch (e) {
-    console.log('Starting fresh store');
-}
+    if (fs.existsSync(storePath)) store.readFromFile(storePath);
+} catch (e) { console.log('Fresh store started'); }
 
 setInterval(() => {
     try {
@@ -61,13 +47,14 @@ setInterval(() => {
 authenticationn();
 
 const statusQueue = new Set(); 
+const userCooldown = new Set();
 
 async function startPeace() { 
-    let autobio, autolike, autoview, mode, prefix, anticall, antiedit;
+    let autobio, autolike, autoview, mode, prefix; // ✅ Restored prefix variable
 
     try {
         const settings = await fetchSettings();
-        ({ autobio, autolike, autoview, mode, prefix, anticall, antiedit } = settings);
+        ({ autobio, autolike, autoview, mode, prefix } = settings); // ✅ Loaded prefix
         logSuccess('Settings loaded successfully');
     } catch (error) {
         logError('Settings', error.message);
@@ -86,11 +73,11 @@ async function startPeace() {
         printQRInTerminal: false,
         browser: ["KING-M", "Safari", "5.1.7"],
         auth: state,
-        // ✅ HEROKU RAM SAVER
-        syncFullHistory: false,
-        shouldSyncHistoryMessage: () => false,
+        syncFullHistory: false, 
         markOnlineOnConnect: true
     });
+
+    client.sendText = (jid, text, quoted = '', options) => client.sendMessage(jid, { text: text, ...options }, { quoted });
 
     client.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
@@ -106,14 +93,17 @@ async function startPeace() {
         } else if (connection === "open") {
             try { await initializeDatabase(); } catch (err) {}
             
-            // AUTO-FOLLOW
+            logConnection('KING-M connected');
+
+            // ✅ RESTORED PREFIX IN STARTING MESSAGE
+            client.sendMessage(client.user.id, { 
+                text: `✅ *KING-M ONLINE*\n\n⚙️ *MODE:* ${mode}\n📌 *PREFIX:* ${prefix}\n❤️ *STATUS:* Active` 
+            });
+
             try {
                 const myChannelJid = "120363425782251560@newsletter"; 
                 if (client.newsletterFollow) await client.newsletterFollow(myChannelJid);
             } catch (e) {}
-
-            logConnection('KING-M connected');
-            client.sendMessage(client.user.id, { text: `✅ *KING-M ONLINE*\nMode: ${mode}` });
         }
     });
 
@@ -126,54 +116,42 @@ async function startPeace() {
             if (!mek.message) return;
             mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
-            // ✅ STABILIZED STATUS VIEW/REACT
-          // ✅ ANTI-SELF-LOOP STATUS HANDLING
-if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-    const statusId = mek.key.id;
-    const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
-    
-    // 1. GET BOT'S OWN ID
-    const botId = client.decodeJid(client.user.id);
+            // ✅ STATUS HANDLING (ANTI-SELF-LOOP)
+            if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+                const statusId = mek.key.id;
+                const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
+                const botId = client.decodeJid(client.user.id);
 
-    // ⛔ CRITICAL FIX: If the status is from the bot's own number, IGNORE IT.
-    // This stops the infinite loop and the "Bad MAC" / "H10" crashes.
-    if (sender.includes(botId.split('@')[0])) return;
+                if (sender.includes(botId.split('@')[0])) return;
 
-    // 2. Freshness Check (Ignore statuses older than 60 seconds)
-    const msgTimestamp = mek.messageTimestamp;
-    const now = Math.floor(Date.now() / 1000);
-    if (now - msgTimestamp > 60) return;
+                const now = Math.floor(Date.now() / 1000);
+                if (now - mek.messageTimestamp > 60) return;
 
-    // 3. Queue & Cooldown Checks
-    if (statusQueue.has(statusId) || userCooldown.has(sender)) return;
+                if (statusQueue.has(statusId) || userCooldown.has(sender)) return;
 
-    statusQueue.add(statusId);
-    userCooldown.add(sender);
+                statusQueue.add(statusId);
+                userCooldown.add(sender);
 
-    try {
-        // Delay to prevent Heroku R14 Memory Flooding
-        await sleep(Math.floor(Math.random() * 5000) + 5000);
+                try {
+                    await sleep(Math.floor(Math.random() * 6000) + 4000);
+                    await client.readMessages([mek.key]);
 
-        await client.readMessages([mek.key]);
+                    if (autolike === 'on') {
+                        const emojis = ['🗿', '❤️‍🔥', '💯', '🔥', '✨', '✅', '🌟'];
+                        const react = emojis[Math.floor(Math.random() * emojis.length)];
 
-        if (autolike === 'on') {
-            const emojis = ['❤️‍🔥', '💯', '🔥', '✨', '✅', '🌟'];
-            const react = emojis[Math.floor(Math.random() * emojis.length)];
+                        await client.sendMessage("status@broadcast", 
+                            { react: { text: react, key: mek.key } }, 
+                            { statusJidList: [sender, botId] }
+                        );
+                    }
+                } catch (err) {
+                } finally {
+                    setTimeout(() => statusQueue.delete(statusId), 120000);
+                    setTimeout(() => userCooldown.delete(sender), 30000);
+                }
+            }
 
-            await client.sendMessage(
-                "status@broadcast", 
-                { react: { text: react, key: mek.key } }, 
-                { statusJidList: [sender, botId] }
-            );
-            logSuccess(`[KING-M] Fresh status liked from: ${sender.split('@')[0]}`);
-        }
-    } catch (err) { 
-        // Error handling
-    } finally {
-        setTimeout(() => statusQueue.delete(statusId), 120000);
-        setTimeout(() => userCooldown.delete(sender), 60000);
-    }
-}
             if (!client.public && !mek.key.fromMe) return;
             
             let m = smsg(client, mek, store);
