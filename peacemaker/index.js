@@ -145,26 +145,29 @@ async function startPeace() {
             // ================== AUTO-STATUS REACT (CRASH FIXED) ==================
    // ================== FIXED AUTO-STATUS VIEW & REACT ==================
 // ================== FIXED AUTO-STATUS VIEW & REACT ==================
+// ================== FIXED AUTO-STATUS VIEW & REACT ==================
 if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
     try {
-        // 1. Mark status as read
+        // 1. Mark status as read (Autoview)
+        // This explicitly marks the specific message key as read
         await client.readMessages([mek.key]);
 
         if (autolike === 'on') {
-            // Get your own JID safely
+            // Get your own JID safely using the library's decode function
             const myJid = client.decodeJid(client.user.id);
             
             // Fix: Multiple fallbacks to find a valid sender JID string
-            // This prevents the 'toString' error in the library's relayMessage
-            const statusSender = mek.key.participant || mek.participant || (mek.key.remoteJid.includes('@') ? mek.key.remoteJid : null);
+            // This prevents the 'toString' error in the library's internal relayMessage
+            const statusSender = mek.key.participant || mek.participant || 
+                               (mek.key.remoteJid.includes('@') ? mek.key.remoteJid : null);
             
-            if (!statusSender) return; // Exit if no valid ID is found
+            if (!statusSender) return; // Stop if we can't find a valid ID to avoid crash
 
             const emojis = ['🗿', '⌚️', '💠', '👣', '❤️‍🔥', '💯', '🔥', '💫', '🌟', '✅'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
 
             // 2. Send reaction with explicit statusJidList
-            // We use 'status@broadcast' as the JID to match the library's internal status logic
+            // Your library requires statusJidList to be an array of valid JID strings
             await client.sendMessage(
                 "status@broadcast", 
                 { 
@@ -174,7 +177,7 @@ if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
                     } 
                 }, 
                 { 
-                    // statusJidList must be an array of valid strings
+                    // CRITICAL: Passing the sender and yourself makes the like visible
                     statusJidList: [statusSender, myJid] 
                 }
             );
@@ -182,7 +185,7 @@ if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
             logSuccess('Status Auto-Like Success');
         }
     } catch (err) {
-        // Catch any remaining errors to prevent bot crash
+        // Log the exact error to your console to help with debugging
         console.log('[KING-M ERROR]: Status Process Failed ->', err.message);
     }
 }
