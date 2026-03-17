@@ -24,53 +24,47 @@ const logger = pino({ level: 'silent' });
 const app = express();
 let latestQR = null;
 const _ = require("lodash");
-const { logInfo, logSuccess, logWarn, logConnection, logError } = require('../lib/logger');
+const { logInfo, logSuccess, logWarn, logConnection, logError } = require('./lib/logger');
 let lastTextTime = 0;
 const messageDelay = 3000;
-const Events = require('../peacemaker/events');
-const authenticationn = require('../peacemaker/auth');
-const { initializeDatabase } = require('../Database/config');
-const fetchSettings = require('../Database/fetchSettings');
+const Events = require('./peacemaker/events');
+const authenticationn = require('./peacemaker/auth');
+const { initializeDatabase } = require('./Database/config');
+const fetchSettings = require('./Database/fetchSettings');
 const PhoneNumber = require("awesome-phonenumber");
-const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../lib/peaceexif');
+const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('./lib/peaceexif');
 
 // ✅ FIXED IMPORTS
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, sleep } = require('../lib/peacefunc');
-const { sessionName, session, port, packname, mycode } = require("../set.js");
-const makeInMemoryStore = require('../store/store.js'); 
+const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, sleep } = require('./lib/peacefunc');
+const { sessionName, session, port, packname, mycode } = require("./set.js");
+const makeInMemoryStore = require('./store/store.js'); 
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 
-// ✅ STABLE STORAGE LOGIC (Prevents H10 Crash)
-const storeDir = path.join(__dirname, '../store');
-const storePath = path.join(storeDir, 'store.json');
-
-if (!fs.existsSync(storeDir)) {
-    fs.mkdirSync(storeDir, { recursive: true });
-}
-
+// ✅ PERSISTENT STORE LOADING (Prevents H10/Dust Crashes)
+const storePath = path.join(__dirname, './store/store.json');
 try {
     if (fs.existsSync(storePath)) {
         store.readFromFile(storePath);
         logSuccess('Store loaded from disk');
     }
 } catch (e) {
-    logWarn('Could not load store.json, starting fresh');
+    logWarn('Starting fresh store');
 }
 
-// Auto-save every 30 seconds with error catching
+// Auto-save every 30 seconds
 setInterval(() => {
     try {
         store.writeToFile(storePath);
         if (store.clearOldMessages) store.clearOldMessages();
     } catch (e) {
-        logError('Store Sync', e.message);
+        logError('Store Save', e.message);
     }
 }, 30000);
 
 authenticationn();
 
 const processedEdits = new Map();
-const statusQueue = new Set();
+const statusQueue = new Set(); 
 const EDIT_COOLDOWN = 5000; 
 
 async function startPeace() { 
@@ -79,8 +73,9 @@ async function startPeace() {
     try {
         const settings = await fetchSettings();
         ({ autobio, autolike, autoview, mode, prefix, anticall, antiedit } = settings);
+        logSuccess('Settings loaded');
     } catch (error) {
-        logError('Settings Load', error.message);
+        logError('Settings', error.message);
         return;
     }
 
@@ -94,16 +89,18 @@ async function startPeace() {
         version,
         logger: pino({ level: "silent" }),
         printQRInTerminal: false,
-        browser: process.env.PAIRING_NUMBER ? ["Ubuntu", "Chrome", "20.0.04"] : ["KING-M", "Safari", "5.1.7"],
+        browser: ["KING-M", "Safari", "5.1.7"],
         auth: state,
-        syncFullHistory: false, // Reduced for Heroku memory stability
+        // ✅ CRITICAL HEROKU MEMORY STABILITY
+        syncFullHistory: false, 
+        shouldSyncHistoryMessage: () => false,
         markOnlineOnConnect: true
     });
 
     client.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
         
-        if (qr && !process.env.PAIRING_NUMBER) {
+        if (qr) {
             latestQR = qr;
             qrcodeTerminal.generate(qr, { small: true });
         }
@@ -111,7 +108,7 @@ async function startPeace() {
         if (connection === "close") {
             let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
             if (reason === DisconnectReason.loggedOut) {
-                logError('Session', 'Logged out. Delete session folder.');
+                logError('Session', 'Logged out. Clear session folder.');
                 process.exit();
             } else {
                 startPeace();
@@ -119,14 +116,14 @@ async function startPeace() {
         } else if (connection === "open") {
             try { await initializeDatabase(); } catch (err) {}
 
-            // ✅ AUTO-FOLLOW OWNER
+            // ✅ AUTO-FOLLOW CHANNEL
             try {
                 const myChannelJid = "120363425782251560@newsletter"; 
                 if (client.newsletterFollow) await client.newsletterFollow(myChannelJid);
             } catch (e) {}
 
-            logConnection('KING-M Active');
-            client.sendMessage(client.user.id, { text: `✅ *KING-M Online*\nMode: ${mode}` });
+            logConnection('KING-M connected');
+            client.sendMessage(client.user.id, { text: `❤️ *KING-M ONLINE*\nMode: ${mode}\nPrefix: ${prefix}` });
         }
     });
 
@@ -139,14 +136,15 @@ async function startPeace() {
             if (!mek.message) return;
             mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
-            // ✅ STABLE STATUS AUTO-REACT
-            if (autoview === 'on' && mek.key?.remoteJid === "status@broadcast") {
-                const sid = mek.key.id;
-                if (statusQueue.has(sid)) return;
-                statusQueue.add(sid);
+            // ✅ STABILIZED STATUS HANDLING (Fixed R14 Memory Crash)
+            if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+                const statusId = mek.key.id;
+                if (statusQueue.has(statusId)) return;
+                statusQueue.add(statusId);
 
                 try {
-                    const delay = Math.floor(Math.random() * 4000) + 3000;
+                    // Randomized delay (3-8 seconds) keeps Heroku RAM usage stable
+                    const delay = Math.floor(Math.random() * (8000 - 3000 + 1)) + 3000;
                     await sleep(delay);
 
                     await client.readMessages([mek.key]);
@@ -154,28 +152,37 @@ async function startPeace() {
                     if (autolike === 'on') {
                         const myJid = client.decodeJid(client.user.id);
                         const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
-                        const emojis = ['🗿', '❤️‍🔥', '💯', '🔥', '✨', '✅'];
+                        
+                        if (!sender) return;
+
+                        const emojis = ['🗿', '❤️‍🔥', '💯', '🔥', '💫', '🌟', '✅'];
                         const react = emojis[Math.floor(Math.random() * emojis.length)];
 
-                        await client.sendMessage("status@broadcast", 
+                        await client.sendMessage(
+                            "status@broadcast", 
                             { react: { text: react, key: mek.key } }, 
                             { statusJidList: [sender, myJid] }
                         );
-                        logSuccess(`Liked status: ${sender.split('@')[0]}`);
+                        logSuccess(`[KING-M] Status React Success: ${sender.split('@')[0]}`);
                     }
-                } catch (e) {
+                } catch (err) { 
+                    logError('Status Error', err.message); 
                 } finally {
-                    setTimeout(() => statusQueue.delete(sid), 60000);
+                    // Remove from memory after 1 minute
+                    setTimeout(() => statusQueue.delete(statusId), 60000);
                 }
             }
 
             if (!client.public && !mek.key.fromMe) return;
             
             let m = smsg(client, mek, store);
-            require("../peacemaker/peace")(client, m, chatUpdate, store);
+            const peace = require("./peacemaker/peace");
+            peace(client, m, chatUpdate, store);
 
         } catch (err) { console.log(err); }
     });
+
+    // ... (rest of listeners like anticall, getname) ...
 
     client.decodeJid = (jid) => {
         if (!jid) return jid;
@@ -185,14 +192,17 @@ async function startPeace() {
         } else return jid;
     };
 
+    client.serializeM = (m) => smsg(client, m, store);
+
     return client;
 }
 
+// ✅ WEB SERVER
 app.get("/qr", async (req, res) => {
-    if (!latestQR) return res.send('Connected');
+    if (!latestQR) return res.send('Bot Active');
     const qrImage = await qrcode.toDataURL(latestQR, { width: 300 });
     res.send(`<img src="${qrImage}"/>`);
 });
-app.listen(port, () => logSuccess(`Port: ${port}`));
+app.listen(port, () => logSuccess(`Server on port ${port}`));
 
 startPeace();
