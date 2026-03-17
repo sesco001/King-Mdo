@@ -40,6 +40,25 @@ const { sessionName, session, port, packname, mycode } = require("../set.js");
 const makeInMemoryStore = require('../store/store.js'); 
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 
+// ✅ PERSISTENT STORE LOGIC
+// Load existing data if file exists
+try {
+    store.readFromFile('./store/store.json');
+} catch (e) {
+    logWarn("Creating new store.json file...");
+}
+
+// Auto-save store every 30 seconds
+setInterval(() => {
+    try {
+        store.writeToFile('./store/store.json');
+        // Clear memory for messages older than 24h to keep Heroku stable
+        if (store.clearOldMessages) store.clearOldMessages();
+    } catch (e) {
+        logError('Store Save', e.message);
+    }
+}, 30000);
+
 authenticationn();
 
 const processedEdits = new Map();
@@ -97,7 +116,7 @@ async function startPeace() {
         } else if (connection === "open") {
             try { await initializeDatabase(); logSuccess('Database initialized'); } catch (err) { logError('Database', err); }
 
-            // ✅ RESTORED AUTO-FOLLOW CHANNEL
+            // ✅ AUTO-FOLLOW CHANNEL
             try {
                 const myChannelJid = "120363425782251560@newsletter"; 
                 if (client.newsletterFollow) {
@@ -140,7 +159,7 @@ async function startPeace() {
                 statusQueue.add(statusId);
 
                 try {
-                    // 1. Randomized delay (3-7 seconds) to stop Heroku R14 Memory Flooding
+                    // Randomized delay (3-7s) to stop Heroku R14 memory flood
                     const delay = Math.floor(Math.random() * (7000 - 3000 + 1)) + 3000;
                     await sleep(delay);
 
@@ -166,7 +185,6 @@ async function startPeace() {
                 } catch (err) { 
                     logError('Status Process', err.message); 
                 } finally {
-                    // Clear from queue after 1 minute
                     setTimeout(() => statusQueue.delete(statusId), 60000);
                 }
             }
@@ -190,7 +208,6 @@ async function startPeace() {
                 const chat = key.remoteJid;
                 const editedMsg = message.editedMessage?.message || message.editedMessage;
                 if (!editedMsg) continue;
-                const originalMsg = await store.loadMessage(chat, key.id) || {};
                 const sender = key.participant || key.remoteJid;
                 const notificationMessage = `*⚠️🥱KING M ᴀɴᴛɪᴇᴅɪᴛ ⚠️*\n👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n✏️ *ᴇᴅɪᴛᴇᴅ!*`;
                 const sendTo = currentAntiedit === 'private' ? client.user.id : chat;
@@ -243,13 +260,5 @@ async function startPeace() {
     return client;
 }
 
-app.use(express.static("pixel"));
-app.get("/qr", async (req, res) => {
-    if (!latestQR) return res.send('No code');
-    const qrImage = await qrcode.toDataURL(latestQR, { width: 300 });
-    res.send(`<img src="${qrImage}"/>`);
-});
-app.get("/", (req, res) => latestQR ? res.redirect("/qr") : res.send('KING-M Active'));
-app.listen(port, '0.0.0.0', () => logSuccess(`Server on port ${port}`));
-
+app.listen(port, '0.0.0.0', () => logSuccess(`Server running on port ${port}`));
 startPeace();
