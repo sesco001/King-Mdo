@@ -127,35 +127,53 @@ async function startPeace() {
             mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
             // ✅ STABILIZED STATUS VIEW/REACT
-            if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-                const statusId = mek.key.id;
-                if (statusQueue.has(statusId)) return;
-                statusQueue.add(statusId);
+          // ✅ ANTI-SELF-LOOP STATUS HANDLING
+if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+    const statusId = mek.key.id;
+    const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
+    
+    // 1. GET BOT'S OWN ID
+    const botId = client.decodeJid(client.user.id);
 
-                try {
-                    // Staggered delay for Heroku stability
-                    await sleep(Math.floor(Math.random() * 5000) + 3000);
+    // ⛔ CRITICAL FIX: If the status is from the bot's own number, IGNORE IT.
+    // This stops the infinite loop and the "Bad MAC" / "H10" crashes.
+    if (sender.includes(botId.split('@')[0])) return;
 
-                    await client.readMessages([mek.key]);
+    // 2. Freshness Check (Ignore statuses older than 60 seconds)
+    const msgTimestamp = mek.messageTimestamp;
+    const now = Math.floor(Date.now() / 1000);
+    if (now - msgTimestamp > 60) return;
 
-                    if (autolike === 'on') {
-                        const myJid = client.decodeJid(client.user.id);
-                        const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
-                        const emojis = ['🗿', '❤️‍🔥', '💯', '🔥', '💫', '🌟', '✅'];
-                        const react = emojis[Math.floor(Math.random() * emojis.length)];
+    // 3. Queue & Cooldown Checks
+    if (statusQueue.has(statusId) || userCooldown.has(sender)) return;
 
-                        await client.sendMessage("status@broadcast", 
-                            { react: { text: react, key: mek.key } }, 
-                            { statusJidList: [sender, myJid] }
-                        );
-                        logSuccess(`Liked status from ${sender.split('@')[0]}`);
-                    }
-                } catch (err) {
-                } finally {
-                    setTimeout(() => statusQueue.delete(statusId), 60000);
-                }
-            }
+    statusQueue.add(statusId);
+    userCooldown.add(sender);
 
+    try {
+        // Delay to prevent Heroku R14 Memory Flooding
+        await sleep(Math.floor(Math.random() * 5000) + 5000);
+
+        await client.readMessages([mek.key]);
+
+        if (autolike === 'on') {
+            const emojis = ['❤️‍🔥', '💯', '🔥', '✨', '✅', '🌟'];
+            const react = emojis[Math.floor(Math.random() * emojis.length)];
+
+            await client.sendMessage(
+                "status@broadcast", 
+                { react: { text: react, key: mek.key } }, 
+                { statusJidList: [sender, botId] }
+            );
+            logSuccess(`[KING-M] Fresh status liked from: ${sender.split('@')[0]}`);
+        }
+    } catch (err) { 
+        // Error handling
+    } finally {
+        setTimeout(() => statusQueue.delete(statusId), 120000);
+        setTimeout(() => userCooldown.delete(sender), 60000);
+    }
+}
             if (!client.public && !mek.key.fromMe) return;
             
             let m = smsg(client, mek, store);
