@@ -700,26 +700,19 @@ if (antilinkall === 'on' && body.includes('https://') && !Owner && isBotAdmin &&
 // ✅ CLEAN TERMINAL LOGGING ADAPTATION (BOXED FORMAT)
 //========================================================================================================================//
 
-
-if (cmd) {
-    const now = new Date();
-    const sentTime = now.toLocaleString('en-US', { 
-        hour: 'numeric', 
-        minute: 'numeric', 
-        second: 'numeric', 
-        hour12: true, 
-        timeZone: 'Africa/Nairobi' 
-    });
-    
-    logMessage({
-        time: sentTime,
-        sender: `${pushname} (@${sender.split('@')[0]})`,
-        type: m.isGroup ? `Group (${groupName})` : 'Private',
-        message: body || m.mtype
-    });
-    
-    logSpeed((performance.now() - timestamp).toFixed(0));
-}
+    if (cmd && !m.isGroup) {
+      console.log(chalk.black(chalk.bgWhite("[ KING-M ]")), color(argsLog, "turquoise"), chalk.magenta("From"), chalk.green(pushname), chalk.yellow(`[ ${m.sender.replace("@s.whatsapp.net", "")} ]`));
+    } else if (cmd && m.isGroup) {
+      console.log(
+        chalk.black(chalk.bgWhite("[ LOGS ]")),
+        color(argsLog, "turquoise"),
+        chalk.magenta("From"),
+        chalk.green(pushname),
+        chalk.yellow(`[ ${m.sender.replace("@s.whatsapp.net", "")} ]`),
+        chalk.blueBright("IN"),
+        chalk.green(groupName)
+      );
+    }
 //========================================================================================================================//
 
 //========================================================================================================================//
