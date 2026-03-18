@@ -118,51 +118,58 @@ async function startPeace() {
 
             // ✅ STATUS HANDLING (ANTI-SELF-LOOP)
                         // ✅ IMPROVED STATUS HANDLING (LID Resolved & Anti-Loop)
+            // ✅ MASTER CONSISTENT STATUS HANDLER
             if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
                 const statusId = mek.key.id;
                 const rawSender = mek.key.participant || mek.participant || mek.key.remoteJid;
                 const botId = client.decodeJid(client.user.id);
 
-                // ⛔ 1. STOP SELF-LOOP (Critical Fix for Dust/Crash)
-                if (rawSender.includes(botId.split('@')[0])) return;
+                // 1. Resolve LID to standard phone number for consistency
+                const senderNum = rawSender.split('@')[0].split(':')[0];
+                const botNum = botId.split('@')[0].split(':')[0];
 
-                // ⛔ 2. FRESHNESS CHECK (Ignore statuses older than 2 minutes)
+                // ⛔ STOP SELF-LOOP (Stops the "Dust" crash)
+                if (senderNum === botNum) return;
+
+                // ⛔ FRESHNESS & COOLDOWN
                 const now = Math.floor(Date.now() / 1000);
                 if (now - mek.messageTimestamp > 120) return;
-
-                // ⛔ 3. COOLDOWN CHECK
                 if (statusQueue.has(statusId) || userCooldown.has(rawSender)) return;
+
                 statusQueue.add(statusId);
                 userCooldown.add(rawSender);
 
                 try {
-                    // Spacing for Heroku stability
-                    await sleep(Math.floor(Math.random() * 4000) + 4000);
+                    await sleep(Math.floor(Math.random() * 3000) + 4000);
 
-                    // ✅ FIX: Mark as read using the correct key
+                    // VIEW STATUS
                     await client.readMessages([mek.key]);
 
                     if (autolike === 'on') {
-                        // Emoji selection
-                        const emojis = ['❤️', '👍', '🔥', '💯', '✨', '🌟', '✅'];
-                        const reactEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+                        // ✅ MASTER CONFIG: RANDOM EMOJIS
+                        const EMOJIS = ['❤️', '💛', '👍', '💜', '😮', '🤍', '💙', '💯', '🔥', '✨'];
+                        const reactEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
 
-                        // ✅ FIX: Send reaction back to the status@broadcast with the participant ID
                         await client.sendMessage("status@broadcast", 
                             { react: { text: reactEmoji, key: mek.key } }, 
                             { statusJidList: [rawSender, botId] }
                         );
-                        logSuccess(`[KING-M] Viewed & Liked: ${rawSender.split('@')[0]}`);
+                        // Clean Log Output
+                        logSuccess(`[KING-M] Fresh Status Seen: ${senderNum}`);
                     }
+
+                    // ✅ AUTO REPLY LOGIC (Added for master consistency)
+                    // if (settings.autoreply === 'on') {
+                    //    await client.sendMessage(rawSender, { text: "👀 Seen your status!" }, { quoted: mek });
+                    // }
+
                 } catch (err) {
-                    logError('Status Handler', err.message);
+                    logError('Status Error', err.message);
                 } finally {
-                    // Memory Management
                     setTimeout(() => statusQueue.delete(statusId), 120000);
                     setTimeout(() => userCooldown.delete(rawSender), 30000);
                 }
             }
-
 
             if (!client.public && !mek.key.fromMe) return;
             
