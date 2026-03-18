@@ -220,19 +220,21 @@ try {
       // ========== AUTO REACT STATUS ==========
       if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
         // Don't react to own status
-        if (mek.key.fromMe) continue;
-        
-        // Check if already processed
-        const statusId = mek.key.id;
-        if (reactedStatuses.has(statusId)) continue;
-        
-        // Add to queue
-        statusQueue.push({ client, mek });
-        console.log(`📥 Queued status ${statusId} (${statusQueue.length} in queue)`);
-        
-        // Start processing if not already running
-        if (!isProcessing) {
-          processStatusQueue();
+        if (mek.key.fromMe) {
+          console.log('⏭️ Skipping own status');
+        } else {
+          // Check if already processed
+          const statusId = mek.key.id;
+          if (!reactedStatuses.has(statusId)) {
+            // Add to queue
+            statusQueue.push({ client, mek });
+            console.log(`📥 Queued status ${statusId.substring(0,8)}... (${statusQueue.length} in queue)`);
+            
+            // Start processing if not already running
+            if (!isProcessing) {
+              processStatusQueue();
+            }
+          }
         }
       }
       
