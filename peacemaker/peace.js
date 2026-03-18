@@ -703,9 +703,16 @@ if (antilinkall === 'on' && body.includes('https://') && !Owner && isBotAdmin &&
 // ✅ CLEAN TERMINAL LOGGING ADAPTATION (BOXED FORMAT)
 //========================================================================================================================//
 
+
 if (cmd) {
     const now = new Date();
-    const sentTime = now.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true, timeZone: 'Africa/Nairobi' });
+    const sentTime = now.toLocaleString('en-US', { 
+        hour: 'numeric', 
+        minute: 'numeric', 
+        second: 'numeric', 
+        hour12: true, 
+        timeZone: 'Africa/Nairobi' 
+    });
     
     logMessage({
         time: sentTime,
