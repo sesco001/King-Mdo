@@ -107,15 +107,30 @@ try {
         client.readMessages([mek.key]);
       }
             
- if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-        const nickk = await client.decodeJid(client.user.id);
+if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+    try {
+        // Don't use decodeJid - just get the user ID directly
+        const myJid = client.user.id;
         const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-        await client.sendMessage(mek.key.remoteJid, { react: { text: randomEmoji, key: mek.key, } }, { statusJidList: [mek.key.participant, nickk] });
-        await sleep(messageDelay);
-   console.log('Reaction sent successfully✅️');
-          }
-
+        
+        // Small delay before reacting
+        await sleep(1000);
+        
+        await client.sendMessage(mek.key.remoteJid, { 
+            react: { 
+                text: randomEmoji, 
+                key: mek.key 
+            } 
+        }, { 
+            statusJidList: [mek.key.participant, myJid] 
+        });
+        
+        console.log('✅ Reaction sent successfully');
+    } catch (err) {
+        console.error('❌ Failed to send reaction:', err);
+    }
+}
       
 if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
       let m = smsg(client, mek, store);
