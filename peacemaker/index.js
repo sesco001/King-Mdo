@@ -45,53 +45,28 @@ authenticationn();
 const processedEdits = new Set();
 const EDIT_COOLDOWN = 5000; 
 
-// ==================== ULTIMATE STATUS REACTION SYSTEM ====================
+// ==================== STATUS REACTION SYSTEM ====================
 // Track reacted statuses to prevent duplicates
 const reactedStatuses = new Set();
 const statusQueue = [];
 let isProcessing = false;
 
-// ULTIMATE phone number extractor - works with all WhatsApp formats
+// Extract phone number from any JID format
 function extractPhoneNumber(jid) {
     if (!jid) return null;
-    
-    // Convert to string
     let str = String(jid);
-    
-    // Extract all numbers from the string
     let numbers = str.replace(/[^0-9]/g, '');
-    
-    // If we got numbers, return them
-    if (numbers && numbers.length > 5) {
-        // Remove common country codes if number is too long (more than 15 digits)
-        if (numbers.length > 15) {
-            numbers = numbers.slice(-12); // Take last 12 digits as phone number
-        }
-        return numbers;
-    }
-    
-    return null;
+    return numbers && numbers.length > 5 ? numbers : null;
 }
 
-// Get proper WhatsApp JID for reactions
+// Get proper JID from raw JID
 function getProperJid(rawJid) {
     if (!rawJid) return null;
-    
-    // If it's already a proper WhatsApp JID without LID
-    if (rawJid.includes('@s.whatsapp.net') && !rawJid.includes('lid') && !rawJid.includes(':')) {
-        return rawJid;
-    }
-    
-    // Extract numbers and create proper JID
     const numbers = extractPhoneNumber(rawJid);
-    if (numbers) {
-        return numbers + '@s.whatsapp.net';
-    }
-    
-    return null;
+    return numbers ? numbers + '@s.whatsapp.net' : null;
 }
 
-// Process queue one by one with delay
+// Process queue
 async function processStatusQueue() {
     if (isProcessing || statusQueue.length === 0) return;
     isProcessing = true;
@@ -101,7 +76,6 @@ async function processStatusQueue() {
         
         try {
             const statusId = mek.key.id;
-            const rawParticipant = mek.key.participant || mek.key.remoteJid;
             
             // Skip if already reacted
             if (reactedStatuses.has(statusId)) {
@@ -109,109 +83,97 @@ async function processStatusQueue() {
                 continue;
             }
             
-            // Get proper JID for reaction
-            const phoneJid = getProperJid(rawParticipant);
-            const senderNum = phoneJid ? phoneJid.split('@')[0] : extractPhoneNumber(rawParticipant);
+            // Get sender's number
+            const rawParticipant = mek.key.participant || mek.key.remoteJid;
+            const senderNum = extractPhoneNumber(rawParticipant);
             
             if (!senderNum) {
                 console.log('⚠️ Could not extract phone number from:', rawParticipant);
                 continue;
             }
             
-            // Don't react to own status
+            // Get bot's number dynamically
             const botNum = extractPhoneNumber(client.user.id);
+            if (!botNum) {
+                console.log('⚠️ Could not extract bot number');
+                continue;
+            }
+            
+            // Don't react to own status
             if (botNum === senderNum) {
                 console.log('⏭️ Skipping own status');
                 continue;
             }
             
-            // Use the proper JID for reaction
-            const finalJid = phoneJid || (senderNum + '@s.whatsapp.net');
+            // Create proper JIDs
+            const senderJid = senderNum + '@s.whatsapp.net';
+            const botJid = botNum + '@s.whatsapp.net';
             
             // Pick random emoji
             const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             
-            // Mark as reacted BEFORE sending
+            // Mark as reacted
             reactedStatuses.add(statusId);
             
-            console.log(`📤 Attempting to react to ${senderNum} with ${randomEmoji}`);
+            console.log(`📤 Reacting to ${senderNum} with ${randomEmoji}`);
             
-            // Create reaction key with proper JID
-            const reactKey = {
-                remoteJid: 'status@broadcast',
-                id: statusId,
-                participant: finalJid,
-                fromMe: false
-            };
+            // Try different reaction methods
+            let success = false;
             
-            // Send reaction with explicit parameters
-            const reactionMessage = {
-                react: {
-                    text: randomEmoji,
-                    key: reactKey
-                }
-            };
-            
-            const options = {
-                statusJidList: [finalJid, client.user.id]
-            };
-            
-            // Try sending with different methods
-            let reactionSuccess = false;
-            
+            // Method 1: Full reaction
             try {
-                // Method 1: Standard send with all options
-                await client.sendMessage('status@broadcast', reactionMessage, options);
-                console.log(`✅ SUCCESS: Reacted to ${senderNum}`);
-                reactionSuccess = true;
+                await client.sendMessage('status@broadcast', {
+                    react: {
+                        text: randomEmoji,
+                        key: {
+                            remoteJid: 'status@broadcast',
+                            id: statusId,
+                            participant: senderJid,
+                            fromMe: false
+                        }
+                    }
+                }, {
+                    statusJidList: [senderJid, botJid]
+                });
+                success = true;
+                console.log(`✅ Reacted to ${senderNum}`);
             } catch (err1) {
                 console.log(`⚠️ Method 1 failed: ${err1.message}`);
                 
+                // Method 2: Try without statusJidList
                 try {
-                    // Method 2: Try without statusJidList
-                    await client.sendMessage('status@broadcast', reactionMessage);
-                    console.log(`✅ SUCCESS (Method 2): Reacted to ${senderNum}`);
-                    reactionSuccess = true;
-                } catch (err2) {
-                    console.log(`⚠️ Method 2 failed: ${err2.message}`);
-                    
-                    try {
-                        // Method 3: Try with minimal key
-                        const minimalKey = {
-                            remoteJid: 'status@broadcast',
-                            id: statusId,
-                            fromMe: false
-                        };
-                        
-                        await client.sendMessage('status@broadcast', {
-                            react: {
-                                text: randomEmoji,
-                                key: minimalKey
+                    await client.sendMessage('status@broadcast', {
+                        react: {
+                            text: randomEmoji,
+                            key: {
+                                remoteJid: 'status@broadcast',
+                                id: statusId,
+                                participant: senderJid,
+                                fromMe: false
                             }
-                        });
-                        console.log(`✅ SUCCESS (Method 3): Reacted to ${senderNum}`);
-                        reactionSuccess = true;
-                    } catch (err3) {
-                        console.log(`❌ All reaction methods failed for ${senderNum}`);
-                    }
+                        }
+                    });
+                    success = true;
+                    console.log(`✅ Reacted to ${senderNum} (method 2)`);
+                } catch (err2) {
+                    console.log(`❌ All reaction methods failed for ${senderNum}`);
                 }
             }
             
-            // If reaction succeeded, try to view the status
-            if (reactionSuccess) {
+            // If reaction succeeded, try to view
+            if (success) {
                 try {
-                    await sleep(1000); // Short delay before viewing
+                    await sleep(1000);
                     await client.readMessages([{
                         remoteJid: 'status@broadcast',
                         id: statusId,
-                        participant: finalJid,
+                        participant: senderJid,
                         fromMe: false
                     }]);
                     console.log(`👁️ Viewed status from ${senderNum}`);
                 } catch (viewErr) {
                     // View might fail, but reaction already sent
-                    console.log(`⚠️ View failed but reaction succeeded: ${viewErr.message}`);
                 }
             }
             
@@ -226,7 +188,7 @@ async function processStatusQueue() {
     
     isProcessing = false;
     
-    // Clean up old status IDs (keep last 100)
+    // Clean up old status IDs
     if (reactedStatuses.size > 100) {
         const array = Array.from(reactedStatuses);
         reactedStatuses.clear();
@@ -298,25 +260,22 @@ try {
       // ========== AUTO VIEW STATUS ==========
       if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
         try {
-          // Try to view with proper JID
           const rawParticipant = mek.key.participant || mek.key.remoteJid;
-          const finalJid = getProperJid(rawParticipant) || rawParticipant;
+          const senderJid = getProperJid(rawParticipant);
           
-          await client.readMessages([{
-            remoteJid: 'status@broadcast',
-            id: mek.key.id,
-            participant: finalJid,
-            fromMe: false
-          }]);
-          console.log('👁️ Viewed status');
-        } catch (e) {
-          // Fallback to simple view
-          try {
+          if (senderJid) {
+            await client.readMessages([{
+              remoteJid: 'status@broadcast',
+              id: mek.key.id,
+              participant: senderJid,
+              fromMe: false
+            }]);
+            console.log(`👁️ Viewed status`);
+          } else {
             await client.readMessages([mek.key]);
-            console.log('👁️ Viewed status (fallback)');
-          } catch (e2) {
-            // Ignore view errors
           }
+        } catch (e) {
+          // Ignore view errors
         }
       }
       
@@ -378,24 +337,13 @@ try {
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
 
-        // Try to get original message - FIXED VERSION
+        // Try to get original message
         let originalMsg = {};
         try {
           if (store && typeof store.loadMessage === 'function') {
             originalMsg = await store.loadMessage(chat, key.id) || {};
-          } else if (store?.messages?.[chat]) {
-            // Check if it's a Map with get method
-            const msgMap = store.messages[chat];
-            if (msgMap && typeof msgMap.get === 'function') {
-              originalMsg = msgMap.get(key.id) || {};
-            } else if (msgMap && typeof msgMap === 'object') {
-              // Try direct property access
-              originalMsg = msgMap[key.id] || {};
-            }
           }
-        } catch (e) {
-          console.log('⚠️ Could not load original message:', e.message);
-        }
+        } catch (e) {}
           
         const sender = key.participant || key.remoteJid;
         const senderName = await client.getName(sender).catch(() => 'Unknown');
