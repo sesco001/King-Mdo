@@ -40,32 +40,108 @@ const color = (text, color) => {
 };
 
 authenticationn();
-// Add these helper functions for LID resolution
+// Add these h
+// Add these helper functions after your requires (around line 30-50)
+
+// Check if a JID is a LID
 function isLidJid(jid) {
-    return jid?.includes('lid:') || jid?.includes('@lid') || jid?.includes('@newsletter');
+    return jid?.includes('lid:') || jid?.includes('@lid') || jid?.includes('@newsletter') || (jid?.includes(':') && !jid?.includes('s.whatsapp.net'));
 }
 
+// Extract phone number from various formats
+function extractPhoneNumber(jid) {
+    if (!jid) return null;
+    // Remove any prefixes and suffixes
+    let cleaned = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    return cleaned.length > 5 ? cleaned : null; // Basic validation
+}
+
+// Enhanced LID to Phone resolver
 async function resolveLidToPhone(lid, sock) {
+    if (!lid) return null;
+    
     try {
-        // Try Baileys' own lidMapping
+        // Method 1: Try Baileys' own lidMapping (most accurate)
         if (sock?.signalRepository?.lidMapping) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(lid);
-            if (pn) return `${pn}@s.whatsapp.net`;
+            if (pn) {
+                const phoneJid = `${pn}@s.whatsapp.net`;
+                console.log(`✅ Resolved LID ${lid.substring(0,10)}... to ${pn}`);
+                return phoneJid;
+            }
         }
     } catch (e) {}
     
-    // Fallback: check store contacts
-    if (store?.contacts) {
-        for (const [jid, contact] of Object.entries(store.contacts)) {
-            if (contact.lid === lid || contact.id === lid) {
-                return jid;
+    try {
+        // Method 2: Check store contacts (your contacts list)
+        if (store?.contacts) {
+            for (const [jid, contact] of Object.entries(store.contacts)) {
+                // Check if contact has this LID
+                if (contact.lid === lid || contact.id === lid) {
+                    console.log(`✅ Found LID in contacts: ${jid}`);
+                    return jid;
+                }
+                // Check if the contact ID contains this number
+                const contactNum = extractPhoneNumber(jid);
+                const lidNum = extractPhoneNumber(lid);
+                if (contactNum && lidNum && contactNum === lidNum) {
+                    console.log(`✅ Matched by phone number: ${jid}`);
+                    return jid;
+                }
             }
         }
+    } catch (e) {}
+    
+    // Method 3: Try to extract number directly from LID
+    const extractedNum = extractPhoneNumber(lid);
+    if (extractedNum) {
+        const phoneJid = `${extractedNum}@s.whatsapp.net`;
+        console.log(`⚠️ Using extracted number from LID: ${extractedNum}`);
+        return phoneJid;
     }
+    
+    console.log(`❌ Could not resolve LID: ${lid.substring(0,15)}...`);
     return null;
 }
 
+// Build a LID cache from messages
+async function buildLidCache(sock) {
+    try {
+        if (!store?.messages) return;
+        
+        const cache = new Map();
+        // Iterate through recent messages to collect LID->Phone mappings
+        for (const [chat, msgMap] of Object.entries(store.messages)) {
+            if (!msgMap || typeof msgMap.forEach !== 'function') continue;
+            
+            msgMap.forEach((msg) => {
+                if (!msg?.key) return;
+                
+                const participant = msg.key.participant || msg.key.remoteJid;
+                if (!participant) return;
+                
+                if (isLidJid(participant)) {
+                    // This is a LID, try to find the phone JID
+                    const phoneJid = msg.key.remoteJid;
+                    if (phoneJid && !isLidJid(phoneJid)) {
+                        cache.set(participant, phoneJid);
+                    }
+                }
+            });
+        }
+        
+        // Store in global for quick access
+        global.lidCache = cache;
+        console.log(`📦 Built LID cache with ${cache.size} entries`);
+    } catch (e) {
+        console.error('Error building LID cache:', e.message);
+    }
+}
 
+// Call this periodically to keep cache fresh
+setInterval(() => {
+    if (global.client) buildLidCache(global.client);
+}, 5 * 60 * 1000); // Every 5 minutes
 const processedEdits = new Set();
 const EDIT_COOLDOWN = 5000; 
 
@@ -128,6 +204,7 @@ try {
 
       
 // Auto View Status
+// Auto View Status - REPLACE YOUR EXISTING CODE
 if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
     try {
         // Don't auto-view own status
@@ -139,15 +216,15 @@ if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
         
         if (isLidJid(rawParticipant)) {
             phoneJid = await resolveLidToPhone(rawParticipant, client);
-        } else {
-            phoneJid = rawParticipant;
         }
         
         if (phoneJid && !isLidJid(phoneJid)) {
             const readKey = { ...mek.key, participant: phoneJid };
             await client.readMessages([readKey]);
+            console.log(`👁️ Viewed status from ${phoneJid.split('@')[0]}`);
         } else {
             await client.readMessages([mek.key]); // Fallback
+            console.log(`👁️ Viewed status (fallback)`);
         }
     } catch (e) {
         // Fallback to original key
@@ -156,32 +233,57 @@ if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
 }
             
 // Auto Like/React Status
+// Auto Like/React Status - REPLACE YOUR EXISTING CODE (around line 114-140)
 if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
     try {
         // Don't auto-react to own status
-        if (mek.key.fromMe) return;
+        if (mek.key.fromMe) {
+            console.log('⏭️ Skipping own status');
+            return;
+        }
         
         // Get bot's number for exclusion
-        const botNum = (client.user?.id || '').split('@')[0].split(':')[0];
+        const botNum = (client.user?.id || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
         
         // Resolve the participant JID properly
         const rawParticipant = mek.key.participant;
         let phoneJid = null;
+        let resolutionMethod = 'none';
         
         if (isLidJid(rawParticipant)) {
             phoneJid = await resolveLidToPhone(rawParticipant, client);
+            resolutionMethod = phoneJid ? 'resolved' : 'failed';
         } else {
+            phoneJid = rawParticipant;
+            resolutionMethod = 'direct';
+        }
+        
+        // Extract sender number for comparison
+        const senderNum = extractPhoneNumber(phoneJid || rawParticipant) || '';
+        
+        // Skip if it's the bot's own status
+        if (botNum && senderNum === botNum) {
+            console.log('⏭️ Skipping bot own status');
+            return;
+        }
+        
+        // If we couldn't resolve to a phone JID, try to use the raw participant as fallback
+        if (!phoneJid) {
+            console.log('⚠️ No phone JID resolved, using raw participant as fallback');
             phoneJid = rawParticipant;
         }
         
-        // Skip if it's the bot's own status
-        const senderNum = (phoneJid || rawParticipant || '').split('@')[0].split(':')[0];
-        if (botNum && senderNum === botNum) return;
-        
-        // Only proceed if we have a valid phone JID for reactions
-        if (!phoneJid || isLidJid(phoneJid)) {
-            console.log('⚠️ Skipping reaction - could not resolve LID to phone JID');
-            return;
+        // Check if this is still a LID (shouldn't happen, but just in case)
+        if (isLidJid(phoneJid)) {
+            console.log('⚠️ Still have LID, trying emergency extraction');
+            const extracted = extractPhoneNumber(phoneJid);
+            if (extracted) {
+                phoneJid = `${extracted}@s.whatsapp.net`;
+                console.log(`🆘 Emergency extraction gave: ${extracted}`);
+            } else {
+                console.log('❌ Cannot react - still a LID with no phone number');
+                return;
+            }
         }
         
         const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
@@ -190,11 +292,13 @@ if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "
         // Small delay before reacting
         await sleep(1500);
         
-        // Create reaction with resolved phone JID (not LID)
+        // Create reaction with resolved phone JID
         const reactKey = { 
             ...mek.key, 
-            participant: phoneJid  // Use phone JID, not LID
+            participant: phoneJid
         };
+        
+        console.log(`📤 Sending reaction to ${phoneJid.split('@')[0]} (${resolutionMethod})`);
         
         await client.sendMessage(
             'status@broadcast', 
@@ -205,11 +309,11 @@ if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "
                 } 
             }, 
             { 
-                statusJidList: [phoneJid, client.user.id]  // Use phone JID here too
+                statusJidList: [phoneJid, client.user.id]
             }
         );
         
-        console.log('✅ Reaction sent successfully to', phoneJid.split('@')[0]);
+        console.log(`✅ Reaction sent successfully to ${phoneJid.split('@')[0]}`);
         
     } catch (err) {
         console.error('❌ Failed to send reaction:', err.message || err);
