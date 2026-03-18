@@ -700,31 +700,19 @@ if (antilinkall === 'on' && body.includes('https://') && !Owner && isBotAdmin &&
     //========================================================================================================================//
 // ✅ CLEAN TERMINAL LOGGING ADAPTATION (BOXED FORMAT)
 //========================================================================================================================//
+
 if (cmd) {
     const now = new Date();
-    const sentTime = now.toLocaleString('en-US', { 
-        hour: 'numeric', 
-        minute: 'numeric', 
-        second: 'numeric', 
-        hour12: true, 
-        timeZone: 'Africa/Nairobi' 
+    const sentTime = now.toLocaleString('en-US', { hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: true, timeZone: 'Africa/Nairobi' });
+    
+    logMessage({
+        time: sentTime,
+        sender: `${pushname} (@${sender.split('@')[0]})`,
+        type: m.isGroup ? `Group (${groupName})` : 'Private',
+        message: body || m.mtype
     });
-
-    // Determine the type of chat and group name if applicable
-    const logType = m.isGroup ? `Group (${groupName || 'Unknown Group'})` : 'Private';
-    const logMessageContent = body || m.mtype;
-
-    // BOXED TERMINAL LOG
-    console.log(chalk.cyan(`2026-03-18T08:41:37.867129+00:00 app[web.1]: ━━━━━━━━ 〘 KING-M 〙━━━━━━━━`));
-    console.log(chalk.white(`2026-03-18T08:41:37.867148+00:00 app[web.1]:   ▸▸Sent Time: ${sentTime}`));
-    console.log(chalk.white(`2026-03-18T08:41:37.867148+00:00 app[web.1]:   ▸▸Sender: ${pushname} (@${sender.split('@')[0]})`));
-    console.log(chalk.white(`2026-03-18T08:41:37.867168+00:00 app[web.1]:   ▸▸Type: ${logType}`));
-    console.log(chalk.white(`2026-03-18T08:41:37.867169+00:00 app[web.1]:   ▸▸Message: ${logMessageContent}`));
-    console.log(chalk.cyan(`2026-03-18T08:41:37.867181+00:00 app[web.1]: ☆ 《 KING-M 》☆`));
-
-    // Optional: Log speed to keep performance tracking
-    const Rspeed = (performance.now() - timestamp).toFixed(0);
-    console.log(chalk.gray(`2026-03-18T08:41:37.867237+00:00 app[web.1]: [SPEED] Bot response speed: ${Rspeed}ms`));
+    
+    logSpeed((performance.now() - timestamp).toFixed(0));
 }
 //========================================================================================================================//
 
