@@ -1,4 +1,3 @@
-
 const {
   default: peaceConnect,
   useMultiFileAuthState,
@@ -22,6 +21,10 @@ const figlet = require("figlet");
 const logger = pino({ level: 'silent' });
 const app = express();
 const _ = require("lodash");
+const EventEmitter = require('events');
+// Increase max listeners to prevent warning
+EventEmitter.defaultMaxListeners = 20;
+
 let lastTextTime = 0;
 const messageDelay = 3000;
 const currentTime = Date.now();
@@ -40,110 +43,51 @@ const color = (text, color) => {
 };
 
 authenticationn();
-// Add these h
-// Add these helper functions after your requires (around line 30-50)
 
-// Check if a JID is a LID
+const processedEdits = new Set();
+const EDIT_COOLDOWN = 5000; 
+
+// Helper functions for LID resolution
 function isLidJid(jid) {
     return jid?.includes('lid:') || jid?.includes('@lid') || jid?.includes('@newsletter') || (jid?.includes(':') && !jid?.includes('s.whatsapp.net'));
 }
 
-// Extract phone number from various formats
 function extractPhoneNumber(jid) {
     if (!jid) return null;
-    // Remove any prefixes and suffixes
-    let cleaned = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-    return cleaned.length > 5 ? cleaned : null; // Basic validation
+    try {
+        let cleaned = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+        return cleaned.length > 5 ? cleaned : null;
+    } catch (e) {
+        return null;
+    }
 }
 
-// Enhanced LID to Phone resolver
 async function resolveLidToPhone(lid, sock) {
     if (!lid) return null;
     
     try {
-        // Method 1: Try Baileys' own lidMapping (most accurate)
         if (sock?.signalRepository?.lidMapping) {
             const pn = await sock.signalRepository.lidMapping.getPNForLID(lid);
-            if (pn) {
-                const phoneJid = `${pn}@s.whatsapp.net`;
-                console.log(`✅ Resolved LID ${lid.substring(0,10)}... to ${pn}`);
-                return phoneJid;
-            }
+            if (pn) return `${pn}@s.whatsapp.net`;
         }
     } catch (e) {}
     
     try {
-        // Method 2: Check store contacts (your contacts list)
         if (store?.contacts) {
             for (const [jid, contact] of Object.entries(store.contacts)) {
-                // Check if contact has this LID
-                if (contact.lid === lid || contact.id === lid) {
-                    console.log(`✅ Found LID in contacts: ${jid}`);
-                    return jid;
-                }
-                // Check if the contact ID contains this number
+                if (contact.lid === lid || contact.id === lid) return jid;
                 const contactNum = extractPhoneNumber(jid);
                 const lidNum = extractPhoneNumber(lid);
-                if (contactNum && lidNum && contactNum === lidNum) {
-                    console.log(`✅ Matched by phone number: ${jid}`);
-                    return jid;
-                }
+                if (contactNum && lidNum && contactNum === lidNum) return jid;
             }
         }
     } catch (e) {}
     
-    // Method 3: Try to extract number directly from LID
     const extractedNum = extractPhoneNumber(lid);
-    if (extractedNum) {
-        const phoneJid = `${extractedNum}@s.whatsapp.net`;
-        console.log(`⚠️ Using extracted number from LID: ${extractedNum}`);
-        return phoneJid;
-    }
+    if (extractedNum) return `${extractedNum}@s.whatsapp.net`;
     
-    console.log(`❌ Could not resolve LID: ${lid.substring(0,15)}...`);
     return null;
 }
-
-// Build a LID cache from messages
-async function buildLidCache(sock) {
-    try {
-        if (!store?.messages) return;
-        
-        const cache = new Map();
-        // Iterate through recent messages to collect LID->Phone mappings
-        for (const [chat, msgMap] of Object.entries(store.messages)) {
-            if (!msgMap || typeof msgMap.forEach !== 'function') continue;
-            
-            msgMap.forEach((msg) => {
-                if (!msg?.key) return;
-                
-                const participant = msg.key.participant || msg.key.remoteJid;
-                if (!participant) return;
-                
-                if (isLidJid(participant)) {
-                    // This is a LID, try to find the phone JID
-                    const phoneJid = msg.key.remoteJid;
-                    if (phoneJid && !isLidJid(phoneJid)) {
-                        cache.set(participant, phoneJid);
-                    }
-                }
-            });
-        }
-        
-        // Store in global for quick access
-        global.lidCache = cache;
-        console.log(`📦 Built LID cache with ${cache.size} entries`);
-    } catch (e) {
-        console.error('Error building LID cache:', e.message);
-    }
-}
-
-// Call this periodically to keep cache fresh
-setInterval(() => {
-    if (global.client) buildLidCache(global.client);
-}, 5 * 60 * 1000); // Every 5 minutes
-const processedEdits = new Set();
-const EDIT_COOLDOWN = 5000; 
 
 async function startPeace() { 
   
@@ -152,7 +96,6 @@ let autobio, autolike, autoview, mode, prefix, anticall, antiedit;
 try {
   const settings = await fetchSettings();
   console.log("😴 settings object:", settings);
-
   
   ({ autobio, autolike, autoview, mode, prefix, anticall, antiedit } = settings);
 
@@ -184,6 +127,8 @@ try {
     auth: state,
     syncFullHistory: true,
   });
+
+  // Store client globally
   global.client = client;
 
   if (autobio === 'on') {
@@ -203,125 +148,113 @@ try {
       if (!mek.message) return;
       mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
-      
-// Auto View Status
-// Auto View Status - REPLACE YOUR EXISTING CODE
-if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-    try {
-        // Don't auto-view own status
-        if (mek.key.fromMe) return;
-        
-        // Resolve LID to phone JID for proper read receipt
-        const rawParticipant = mek.key.participant;
-        let phoneJid = null;
-        
-        if (isLidJid(rawParticipant)) {
+      // Auto View Status
+      if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+        try {
+          if (mek.key.fromMe) return;
+          
+          const rawParticipant = mek.key.participant;
+          let phoneJid = null;
+          
+          if (isLidJid(rawParticipant)) {
             phoneJid = await resolveLidToPhone(rawParticipant, client);
-        }
-        
-        if (phoneJid && !isLidJid(phoneJid)) {
+          }
+          
+          if (phoneJid && !isLidJid(phoneJid)) {
             const readKey = { ...mek.key, participant: phoneJid };
             await client.readMessages([readKey]);
-            console.log(`👁️ Viewed status from ${phoneJid.split('@')[0]}`);
-        } else {
-            await client.readMessages([mek.key]); // Fallback
+            const displayNum = phoneJid ? phoneJid.split('@')[0] : 'unknown';
+            console.log(`👁️ Viewed status from ${displayNum}`);
+          } else {
+            await client.readMessages([mek.key]);
             console.log(`👁️ Viewed status (fallback)`);
+          }
+        } catch (e) {
+          await client.readMessages([mek.key]);
         }
-    } catch (e) {
-        // Fallback to original key
-        await client.readMessages([mek.key]);
-    }
-}
+      }
             
-// Auto Like/React Status
-// Auto Like/React Status - REPLACE YOUR EXISTING CODE (around line 114-140)
-if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-    try {
-        // Don't auto-react to own status
-        if (mek.key.fromMe) {
+      // Auto Like/React Status
+      if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+        try {
+          if (mek.key.fromMe) {
             console.log('⏭️ Skipping own status');
             return;
-        }
-        
-        // Get bot's number for exclusion
-        const botNum = (client.user?.id || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-        
-        // Resolve the participant JID properly
-        const rawParticipant = mek.key.participant;
-        let phoneJid = null;
-        let resolutionMethod = 'none';
-        
-        if (isLidJid(rawParticipant)) {
+          }
+          
+          const botNum = (client.user?.id || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+          const rawParticipant = mek.key.participant;
+          let phoneJid = null;
+          let resolutionMethod = 'none';
+          
+          if (isLidJid(rawParticipant)) {
             phoneJid = await resolveLidToPhone(rawParticipant, client);
             resolutionMethod = phoneJid ? 'resolved' : 'failed';
-        } else {
+          } else {
             phoneJid = rawParticipant;
             resolutionMethod = 'direct';
-        }
-        
-        // Extract sender number for comparison
-        const senderNum = extractPhoneNumber(phoneJid || rawParticipant) || '';
-        
-        // Skip if it's the bot's own status
-        if (botNum && senderNum === botNum) {
+          }
+          
+          const senderNum = phoneJid ? extractPhoneNumber(phoneJid) : extractPhoneNumber(rawParticipant);
+          
+          if (botNum && senderNum === botNum) {
             console.log('⏭️ Skipping bot own status');
             return;
-        }
-        
-        // If we couldn't resolve to a phone JID, try to use the raw participant as fallback
-        if (!phoneJid) {
-            console.log('⚠️ No phone JID resolved, using raw participant as fallback');
-            phoneJid = rawParticipant;
-        }
-        
-        // Check if this is still a LID (shouldn't happen, but just in case)
-        if (isLidJid(phoneJid)) {
+          }
+          
+          if (!phoneJid) {
+            console.log('⚠️ No phone JID resolved, trying emergency extraction');
+            const extracted = extractPhoneNumber(rawParticipant);
+            if (extracted) {
+              phoneJid = `${extracted}@s.whatsapp.net`;
+              console.log(`🆘 Emergency extraction gave: ${extracted}`);
+            } else {
+              console.log('❌ Cannot react - no phone number could be extracted');
+              return;
+            }
+          }
+          
+          if (isLidJid(phoneJid)) {
             console.log('⚠️ Still have LID, trying emergency extraction');
             const extracted = extractPhoneNumber(phoneJid);
             if (extracted) {
-                phoneJid = `${extracted}@s.whatsapp.net`;
-                console.log(`🆘 Emergency extraction gave: ${extracted}`);
+              phoneJid = `${extracted}@s.whatsapp.net`;
+              console.log(`🆘 Emergency extraction gave: ${extracted}`);
             } else {
-                console.log('❌ Cannot react - still a LID with no phone number');
-                return;
+              console.log('❌ Cannot react - still a LID with no phone number');
+              return;
             }
-        }
-        
-        const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
-        const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-        
-        // Small delay before reacting
-        await sleep(1500);
-        
-        // Create reaction with resolved phone JID
-        const reactKey = { 
-            ...mek.key, 
-            participant: phoneJid
-        };
-        
-        console.log(`📤 Sending reaction to ${phoneJid.split('@')[0]} (${resolutionMethod})`);
-        
-        await client.sendMessage(
+          }
+          
+          if (!phoneJid) {
+            console.log('❌ phoneJid is null, cannot send reaction');
+            return;
+          }
+          
+          const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
+          const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+          
+          await sleep(1500);
+          
+          const reactKey = { ...mek.key, participant: phoneJid };
+          
+          const displayNum = phoneJid ? phoneJid.split('@')[0] : 'unknown';
+          console.log(`📤 Sending reaction to ${displayNum} (${resolutionMethod})`);
+          
+          await client.sendMessage(
             'status@broadcast', 
-            { 
-                react: { 
-                    text: randomEmoji, 
-                    key: reactKey 
-                } 
-            }, 
-            { 
-                statusJidList: [phoneJid, client.user.id]
-            }
-        );
-        
-        console.log(`✅ Reaction sent successfully to ${phoneJid.split('@')[0]}`);
-        
-    } catch (err) {
-        console.error('❌ Failed to send reaction:', err.message || err);
-    }
-}
+            { react: { text: randomEmoji, key: reactKey } }, 
+            { statusJidList: [phoneJid, client.user.id] }
+          );
+          
+          console.log(`✅ Reaction sent successfully to ${displayNum}`);
+          
+        } catch (err) {
+          console.error('❌ Failed to send reaction:', err.message || err);
+        }
+      }
       
-if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
+      if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
       let m = smsg(client, mek, store);
       const peace = require("../peacemaker/peace");
       peace(client, m, chatUpdate, store);
@@ -344,7 +277,6 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
 
         const editId = `${key.id}-${key.remoteJid}`;
         
-        // Skip if recently processed
         if (processedEdits.has(editId)) {
           const [timestamp] = processedEdits.get(editId);
           if (now - timestamp < EDIT_COOLDOWN) continue;
@@ -355,13 +287,14 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
 
-        // Get both messages properly
-     // Get both messages properly - FIX THIS LINE
-const originalMsg = (store && typeof store.loadMessage === 'function') 
-    ? await store.loadMessage(chat, key.id) || {} 
-    : store.messages?.[chat]?.get(key.id) || {};
+        // Fixed: Check if store.loadMessage exists
+        const originalMsg = (store && typeof store.loadMessage === 'function') 
+          ? await store.loadMessage(chat, key.id) || {} 
+          : store.messages?.[chat]?.get(key.id) || {};
+          
+        const sender = key.participant || key.remoteJid;
+        const senderName = await client.getName(sender);
 
-        // Enhanced content extractor
         const getContent = (msg) => {
           if (!msg) return '[Deleted]';
           const type = Object.keys(msg)[0];
@@ -371,8 +304,7 @@ const originalMsg = (store && typeof store.loadMessage === 'function')
             case 'conversation': 
               return content;
             case 'extendedTextMessage': 
-              return content.text + 
-                    (content.contextInfo?.quotedMessage ? ' (with quoted message)' : '');
+              return content.text + (content.contextInfo?.quotedMessage ? ' (with quoted message)' : '');
             case 'imageMessage': 
               return `🖼️ ${content.caption || 'Image'}`;
             case 'videoMessage': 
@@ -387,7 +319,6 @@ const originalMsg = (store && typeof store.loadMessage === 'function')
         const originalContent = getContent(originalMsg.message);
         const editedContent = getContent(editedMsg);
 
-        // Only proceed if content actually changed
         if (originalContent === editedContent) {
           console.log(chalk.yellow(`[ANTIEDIT] No content change detected for ${editId}`));
           continue;
@@ -405,14 +336,12 @@ const originalMsg = (store && typeof store.loadMessage === 'function')
           mentions: [sender]
         });
 
-        // Update tracking with timestamp
         processedEdits.set(editId, [now, originalContent, editedContent]);
         console.log(chalk.green(`[ANTIEDIT] Reported edit from ${senderName}`));
       }
 
-      // Cleanup old entries
       for (const [id, data] of processedEdits) {
-        if (now - data[0] > 60000) { // 1 minute retention
+        if (now - data[0] > 60000) {
           processedEdits.delete(id);
         }
       }
@@ -433,22 +362,19 @@ const originalMsg = (store && typeof store.loadMessage === 'function')
   process.on("Something went wrong", function (err) {
     console.log("Caught exception: ", err);
   });
-//play helper 
-  // =============================================
-// PASTE THIS AT THE VERY BOTTOM OF YOUR FILE
-// =============================================
 
-const fetch = require('node-fetch'); // Ensure you have this: npm install node-fetch
+  const fetch = require('node-fetch');
 
-async function fetchJson(url, options) {
+  async function fetchJson(url, options) {
     try {
-        options ? options : {};
-        const res = await fetch(url, options);
-        return await res.json();
+      options ? options : {};
+      const res = await fetch(url, options);
+      return await res.json();
     } catch (err) {
-        return err;
+      return err;
     }
-}
+  }
+  
   // Setting
   client.decodeJid = (jid) => {
     if (!jid) return jid;
@@ -465,33 +391,32 @@ async function fetchJson(url, options) {
     }
   });
   
-client.ev.on("group-participants.update", async (m) => {
+  client.ev.on("group-participants.update", async (m) => {
     Events(client, m);
   });
   
- client.ev.on('call', async (callData) => {
-  const { anticall: dbAnticall } = await fetchSettings();
+  client.ev.on('call', async (callData) => {
+    const { anticall: dbAnticall } = await fetchSettings();
 
-  if (dbAnticall === 'on') {
-    const callId = callData[0]?.id;
-    const callerId = callData[0]?.from;
+    if (dbAnticall === 'on') {
+      const callId = callData[0]?.id;
+      const callerId = callData[0]?.from;
 
-    if (callId && callerId) {
-      await client.rejectCall(callId, callerId);
-      const currentTime = Date.now();
-      if (currentTime - lastTextTime >= messageDelay) {
-        await client.sendMessage(callerId, {
-          text: "🚫 Anticall is active. Only text messages are allowed."
-        });
-        lastTextTime = currentTime;
+      if (callId && callerId) {
+        await client.rejectCall(callId, callerId);
+        const currentTime = Date.now();
+        if (currentTime - lastTextTime >= messageDelay) {
+          await client.sendMessage(callerId, {
+            text: "🚫 Anticall is active. Only text messages are allowed."
+          });
+          lastTextTime = currentTime;
+        }
       }
+    } else {
+      console.log("✅ Anticall is OFF. Call ignored.");
     }
-  } else {
-    console.log("✅ Anticall is OFF. Call ignored.");
-  }
-});
+  });
 
-        
   client.getName = (jid, withoutContact = false) => {
     let id = client.decodeJid(jid);
     withoutContact = client.withoutContact || withoutContact;
@@ -568,18 +493,18 @@ client.ev.on("group-participants.update", async (m) => {
       }
     } else if (connection === "open") {
 
-try {
-  await initializeDatabase();
-  console.log("✅ PostgreSQL database initialized successfully.");
-} catch (err) {
-  console.error("❌ Failed to initialize database:", err.message || err);
-}
-
+      try {
+        await initializeDatabase();
+        console.log("✅ PostgreSQL database initialized successfully.");
+      } catch (err) {
+        console.error("❌ Failed to initialize database:", err.message || err);
+      }
       
       await client.groupAcceptInvite("CjBNEKIJq6VE2vrJLDSQ2Z");
       console.log(color("Congrats, KING-M has successfully connected to this server", "green"));
       console.log(color("Follow me on Instagram as sescoresco", "red"));
       console.log(color("Text the bot number with menu to check my command list"));
+      
       const Texxt = `❤️ *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
               `───────────────────────\n` +
               `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
