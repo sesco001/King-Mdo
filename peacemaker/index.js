@@ -184,6 +184,7 @@ try {
     auth: state,
     syncFullHistory: true,
   });
+  global.client = client;
 
   if (autobio === 'on') {
     setInterval(() => {
