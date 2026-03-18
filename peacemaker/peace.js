@@ -8,9 +8,6 @@ const translatte = require('translatte');
 global.axios = require('axios').default
 const chalk = require("chalk");
 const speed = require("performance-now");
-// Fixed Import - matches the new exports in lib/logger.js
-const { logMessage, logSpeed, logError, logInfo, logWarn } = require('../lib/logger');
-
 const Genius = require("genius-lyrics");
 const yts = require("yt-search");
 let lastTextTime = 0;
