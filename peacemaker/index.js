@@ -119,57 +119,50 @@ async function startPeace() {
             // ✅ STATUS HANDLING (ANTI-SELF-LOOP)
                         // ✅ IMPROVED STATUS HANDLING (LID Resolved & Anti-Loop)
             // ✅ MASTER CONSISTENT STATUS HANDLER
-            if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-                const statusId = mek.key.id;
-                const rawSender = mek.key.participant || mek.participant || mek.key.remoteJid;
-                const botId = client.decodeJid(client.user.id);
+            // ✅ EMERGENCY STABLE STATUS LOGIC
+if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+    const statusId = mek.key.id;
+    const sender = mek.key.participant || mek.participant || mek.key.remoteJid;
+    const botId = client.decodeJid(client.user.id);
 
-                // 1. Resolve LID to standard phone number for consistency
-                const senderNum = rawSender.split('@')[0].split(':')[0];
-                const botNum = botId.split('@')[0].split(':')[0];
+    // 1. IGNORE SELF & OLD
+    if (sender.includes(botId.split('@')[0])) return;
+    const now = Math.floor(Date.now() / 1000);
+    if (now - mek.messageTimestamp > 30) return; // Only 30 seconds fresh
 
-                // ⛔ STOP SELF-LOOP (Stops the "Dust" crash)
-                if (senderNum === botNum) return;
+    // 2. STRICTOR QUEUE (Global lock)
+    if (statusQueue.has('GLOBAL_LOCK') || statusQueue.has(statusId)) return;
 
-                // ⛔ FRESHNESS & COOLDOWN
-                const now = Math.floor(Date.now() / 1000);
-                if (now - mek.messageTimestamp > 120) return;
-                if (statusQueue.has(statusId) || userCooldown.has(rawSender)) return;
+    statusQueue.add(statusId);
+    statusQueue.add('GLOBAL_LOCK'); // Prevent any other status processing right now
 
-                statusQueue.add(statusId);
-                userCooldown.add(rawSender);
+    try {
+        // Long randomized delay to let Heroku CPU rest
+        await sleep(Math.floor(Math.random() * 10000) + 5000); 
 
-                try {
-                    await sleep(Math.floor(Math.random() * 3000) + 4000);
+        await client.readMessages([mek.key]);
 
-                    // VIEW STATUS
-                    await client.readMessages([mek.key]);
+        if (autolike === 'on') {
+            const emojis = ['❤️‍🔥', '💯', '🔥', '✨', '✅'];
+            const react = emojis[Math.floor(Math.random() * emojis.length)];
 
-                    if (autolike === 'on') {
-                        // ✅ MASTER CONFIG: RANDOM EMOJIS
-                        const EMOJIS = ['❤️', '💛', '👍', '💜', '😮', '🤍', '💙', '💯', '🔥', '✨'];
-                        const reactEmoji = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+            await client.sendMessage("status@broadcast", 
+                { react: { text: react, key: mek.key } }, 
+                { statusJidList: [sender, botId] }
+            );
+            logSuccess(`[KING-M] Safe React: ${sender.split('@')[0]}`);
+        }
 
-                        await client.sendMessage("status@broadcast", 
-                            { react: { text: reactEmoji, key: mek.key } }, 
-                            { statusJidList: [rawSender, botId] }
-                        );
-                        // Clean Log Output
-                        logSuccess(`[KING-M] Fresh Status Seen: ${senderNum}`);
-                    }
+        // Force a 20-second "cool down" period where the bot does NOTHING
+        await sleep(20000); 
 
-                    // ✅ AUTO REPLY LOGIC (Added for master consistency)
-                    // if (settings.autoreply === 'on') {
-                    //    await client.sendMessage(rawSender, { text: "👀 Seen your status!" }, { quoted: mek });
-                    // }
-
-                } catch (err) {
-                    logError('Status Error', err.message);
-                } finally {
-                    setTimeout(() => statusQueue.delete(statusId), 120000);
-                    setTimeout(() => userCooldown.delete(rawSender), 30000);
-                }
-            }
+    } catch (err) {
+        logError('Status Safety', err.message);
+    } finally {
+        statusQueue.delete('GLOBAL_LOCK');
+        setTimeout(() => statusQueue.delete(statusId), 300000); // Keep ID for 5 mins
+    }
+}
 
             if (!client.public && !mek.key.fromMe) return;
             
