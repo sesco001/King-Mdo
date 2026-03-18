@@ -22,20 +22,18 @@ const logger = pino({ level: 'silent' });
 const app = express();
 const _ = require("lodash");
 const EventEmitter = require('events');
-// Increase max listeners to prevent warning
 EventEmitter.defaultMaxListeners = 20;
 
 let lastTextTime = 0;
 const messageDelay = 3000;
-const currentTime = Date.now();
 const Events = require('../peacemaker/events');
 const authenticationn = require('../peacemaker/auth');
 const { initializeDatabase } = require('../Database/config');
 const fetchSettings = require('../Database/fetchSettings');
 const PhoneNumber = require("awesome-phonenumber");
 const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../lib/peaceexif');
-const { smsg, isUrl, generateMessageTag, getBuffer, getSizeMedia, fetchJson, await, sleep } = require('../lib/peacefunc');
-const { sessionName, session, port, packname } = require("../set.js");
+const { smsg, sleep } = require('../lib/peacefunc');
+const { port } = require("../set.js");
 const makeInMemoryStore = require('../store/store.js'); 
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 const color = (text, color) => {
@@ -47,47 +45,107 @@ authenticationn();
 const processedEdits = new Set();
 const EDIT_COOLDOWN = 5000; 
 
-// Helper functions for LID resolution
-function isLidJid(jid) {
-    return jid?.includes('lid:') || jid?.includes('@lid') || jid?.includes('@newsletter') || (jid?.includes(':') && !jid?.includes('s.whatsapp.net'));
-}
+// ==================== STATUS REACTION SYSTEM ====================
+// Track reacted statuses to prevent duplicates
+const reactedStatuses = new Set();
+const statusQueue = [];
+let isProcessing = false;
 
-function extractPhoneNumber(jid) {
+// Simple function to get phone number from any JID format
+function getPhoneNumber(jid) {
     if (!jid) return null;
-    try {
-        let cleaned = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-        return cleaned.length > 5 ? cleaned : null;
-    } catch (e) {
-        return null;
-    }
+    // Extract just numbers, remove anything else
+    let cleaned = jid.split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
+    return cleaned.length > 5 ? cleaned : null;
 }
 
-async function resolveLidToPhone(lid, sock) {
-    if (!lid) return null;
+// Process queue one by one with delay
+async function processStatusQueue() {
+    if (isProcessing || statusQueue.length === 0) return;
+    isProcessing = true;
     
-    try {
-        if (sock?.signalRepository?.lidMapping) {
-            const pn = await sock.signalRepository.lidMapping.getPNForLID(lid);
-            if (pn) return `${pn}@s.whatsapp.net`;
-        }
-    } catch (e) {}
-    
-    try {
-        if (store?.contacts) {
-            for (const [jid, contact] of Object.entries(store.contacts)) {
-                if (contact.lid === lid || contact.id === lid) return jid;
-                const contactNum = extractPhoneNumber(jid);
-                const lidNum = extractPhoneNumber(lid);
-                if (contactNum && lidNum && contactNum === lidNum) return jid;
+    while (statusQueue.length > 0) {
+        const { client, mek } = statusQueue.shift();
+        
+        try {
+            const statusId = mek.key.id;
+            
+            // Skip if already reacted
+            if (reactedStatuses.has(statusId)) {
+                console.log('⏭️ Status already reacted, skipping');
+                continue;
+            }
+            
+            // Get sender's number
+            const rawJid = mek.key.participant || mek.key.remoteJid;
+            const senderNum = getPhoneNumber(rawJid);
+            
+            if (!senderNum) {
+                console.log('⚠️ Could not extract phone number');
+                continue;
+            }
+            
+            // Don't react to own status
+            const botNum = getPhoneNumber(client.user.id);
+            if (botNum === senderNum) {
+                console.log('⏭️ Skipping own status');
+                continue;
+            }
+            
+            // Create proper JID for reaction
+            const phoneJid = senderNum + '@s.whatsapp.net';
+            
+            // Pick random emoji
+            const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            
+            // Mark as reacted BEFORE sending
+            reactedStatuses.add(statusId);
+            
+            console.log(`📤 Reacting to ${senderNum} with ${randomEmoji}`);
+            
+            // Send reaction
+            await client.sendMessage(
+                'status@broadcast',
+                { 
+                    react: { 
+                        text: randomEmoji, 
+                        key: {
+                            remoteJid: 'status@broadcast',
+                            id: statusId,
+                            participant: phoneJid,
+                            fromMe: false
+                        }
+                    } 
+                },
+                { statusJidList: [phoneJid, client.user.id] }
+            );
+            
+            console.log(`✅ Reacted to ${senderNum}`);
+            
+            // Wait between reactions (rate limiting)
+            await sleep(2500);
+            
+        } catch (err) {
+            console.error('❌ Reaction error:', err.message);
+            // If rate limited, wait longer
+            if (err.message?.includes('rate') || err.message?.includes('429')) {
+                console.log('⏳ Rate limited, waiting 5 seconds...');
+                await sleep(5000);
             }
         }
-    } catch (e) {}
+    }
     
-    const extractedNum = extractPhoneNumber(lid);
-    if (extractedNum) return `${extractedNum}@s.whatsapp.net`;
+    isProcessing = false;
     
-    return null;
+    // Clean up old status IDs (keep last 100)
+    if (reactedStatuses.size > 100) {
+        const array = Array.from(reactedStatuses);
+        reactedStatuses.clear();
+        array.slice(-50).forEach(id => reactedStatuses.add(id));
+    }
 }
+// ==================== END STATUS SYSTEM ====================
 
 async function startPeace() { 
   
@@ -96,14 +154,13 @@ let autobio, autolike, autoview, mode, prefix, anticall, antiedit;
 try {
   const settings = await fetchSettings();
   console.log("😴 settings object:", settings);
-  
   ({ autobio, autolike, autoview, mode, prefix, anticall, antiedit } = settings);
-
   console.log("✅ Settings loaded successfully.... indexfile");
 } catch (error) {
   console.error("❌ Failed to load settings:...indexfile", error.message || error);
   return;
 }
+
   const { state, saveCreds } = await useMultiFileAuthState("session");
   const { version, isLatest } = await fetchLatestBaileysVersion();
   console.log(`using WA v${version.join(".")}, isLatest: ${isLatest}`);
@@ -128,142 +185,71 @@ try {
     syncFullHistory: true,
   });
 
-  // Store client globally
-  global.client = client;
-
+  // Auto bio update
   if (autobio === 'on') {
     setInterval(() => {
       const date = new Date();
       client.updateProfileStatus(
-        `📅 𝙳𝙰𝚃𝙴/𝚃𝙸𝙼𝙴 ⌚️  ${date.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })}  ⏰️ 𝙳𝙰𝚈 ⏰️  ${date.toLocaleString('en-US', { weekday: 'long', timeZone: 'Africa/Nairobi'})}. KING M 𝚁𝙴𝙿𝚁𝙴𝚂𝙴𝙽𝚃𝚂 SHARP📌.`
+        `📅 ${date.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })} | KING M`
       );
     }, 10 * 1000);
   }
 
- store.bind(client.ev);
+  store.bind(client.ev);
   
   client.ev.on("messages.upsert", async (chatUpdate) => {
     try {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
-      mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
+      
+      // Handle ephemeral messages
+      if (Object.keys(mek.message)[0] === "ephemeralMessage") {
+        mek.message = mek.message.ephemeralMessage.message;
+      }
 
-      // Auto View Status
+      // ========== AUTO VIEW STATUS ==========
       if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
         try {
-          if (mek.key.fromMe) return;
-          
-          const rawParticipant = mek.key.participant;
-          let phoneJid = null;
-          
-          if (isLidJid(rawParticipant)) {
-            phoneJid = await resolveLidToPhone(rawParticipant, client);
-          }
-          
-          if (phoneJid && !isLidJid(phoneJid)) {
-            const readKey = { ...mek.key, participant: phoneJid };
-            await client.readMessages([readKey]);
-            const displayNum = phoneJid ? phoneJid.split('@')[0] : 'unknown';
-            console.log(`👁️ Viewed status from ${displayNum}`);
-          } else {
-            await client.readMessages([mek.key]);
-            console.log(`👁️ Viewed status (fallback)`);
-          }
-        } catch (e) {
           await client.readMessages([mek.key]);
-        }
-      }
-            
-      // Auto Like/React Status
-      if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-        try {
-          if (mek.key.fromMe) {
-            console.log('⏭️ Skipping own status');
-            return;
-          }
-          
-          const botNum = (client.user?.id || '').split('@')[0].split(':')[0].replace(/[^0-9]/g, '');
-          const rawParticipant = mek.key.participant;
-          let phoneJid = null;
-          let resolutionMethod = 'none';
-          
-          if (isLidJid(rawParticipant)) {
-            phoneJid = await resolveLidToPhone(rawParticipant, client);
-            resolutionMethod = phoneJid ? 'resolved' : 'failed';
-          } else {
-            phoneJid = rawParticipant;
-            resolutionMethod = 'direct';
-          }
-          
-          const senderNum = phoneJid ? extractPhoneNumber(phoneJid) : extractPhoneNumber(rawParticipant);
-          
-          if (botNum && senderNum === botNum) {
-            console.log('⏭️ Skipping bot own status');
-            return;
-          }
-          
-          if (!phoneJid) {
-            console.log('⚠️ No phone JID resolved, trying emergency extraction');
-            const extracted = extractPhoneNumber(rawParticipant);
-            if (extracted) {
-              phoneJid = `${extracted}@s.whatsapp.net`;
-              console.log(`🆘 Emergency extraction gave: ${extracted}`);
-            } else {
-              console.log('❌ Cannot react - no phone number could be extracted');
-              return;
-            }
-          }
-          
-          if (isLidJid(phoneJid)) {
-            console.log('⚠️ Still have LID, trying emergency extraction');
-            const extracted = extractPhoneNumber(phoneJid);
-            if (extracted) {
-              phoneJid = `${extracted}@s.whatsapp.net`;
-              console.log(`🆘 Emergency extraction gave: ${extracted}`);
-            } else {
-              console.log('❌ Cannot react - still a LID with no phone number');
-              return;
-            }
-          }
-          
-          if (!phoneJid) {
-            console.log('❌ phoneJid is null, cannot send reaction');
-            return;
-          }
-          
-          const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
-          const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-          
-          await sleep(1500);
-          
-          const reactKey = { ...mek.key, participant: phoneJid };
-          
-          const displayNum = phoneJid ? phoneJid.split('@')[0] : 'unknown';
-          console.log(`📤 Sending reaction to ${displayNum} (${resolutionMethod})`);
-          
-          await client.sendMessage(
-            'status@broadcast', 
-            { react: { text: randomEmoji, key: reactKey } }, 
-            { statusJidList: [phoneJid, client.user.id] }
-          );
-          
-          console.log(`✅ Reaction sent successfully to ${displayNum}`);
-          
-        } catch (err) {
-          console.error('❌ Failed to send reaction:', err.message || err);
+          console.log('👁️ Viewed status');
+        } catch (e) {
+          // Ignore errors
         }
       }
       
+      // ========== AUTO REACT STATUS ==========
+      if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+        // Don't react to own status
+        if (mek.key.fromMe) continue;
+        
+        // Check if already processed
+        const statusId = mek.key.id;
+        if (reactedStatuses.has(statusId)) continue;
+        
+        // Add to queue
+        statusQueue.push({ client, mek });
+        console.log(`📥 Queued status ${statusId} (${statusQueue.length} in queue)`);
+        
+        // Start processing if not already running
+        if (!isProcessing) {
+          processStatusQueue();
+        }
+      }
+      
+      // Skip if not public and not from me
       if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
+      
+      // Process commands
       let m = smsg(client, mek, store);
       const peace = require("../peacemaker/peace");
       peace(client, m, chatUpdate, store);
+      
     } catch (err) {
       console.log(err);
     }
   });
 
-  
+  // ========== ANTI-EDIT SYSTEM ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
@@ -287,48 +273,40 @@ try {
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
 
-        // Fixed: Check if store.loadMessage exists
-        const originalMsg = (store && typeof store.loadMessage === 'function') 
-          ? await store.loadMessage(chat, key.id) || {} 
-          : store.messages?.[chat]?.get(key.id) || {};
+        // Try to get original message
+        let originalMsg = {};
+        if (store && typeof store.loadMessage === 'function') {
+          originalMsg = await store.loadMessage(chat, key.id) || {};
+        } else if (store?.messages?.[chat]) {
+          originalMsg = store.messages[chat].get(key.id) || {};
+        }
           
         const sender = key.participant || key.remoteJid;
-        const senderName = await client.getName(sender);
+        const senderName = await client.getName(sender).catch(() => 'Unknown');
 
+        // Simple content extractor
         const getContent = (msg) => {
           if (!msg) return '[Deleted]';
           const type = Object.keys(msg)[0];
           const content = msg[type];
           
-          switch(type) {
-            case 'conversation': 
-              return content;
-            case 'extendedTextMessage': 
-              return content.text + (content.contextInfo?.quotedMessage ? ' (with quoted message)' : '');
-            case 'imageMessage': 
-              return `🖼️ ${content.caption || 'Image'}`;
-            case 'videoMessage': 
-              return `🎥 ${content.caption || 'Video'}`;
-            case 'documentMessage': 
-              return `📄 ${content.fileName || 'Document'}`;
-            default: 
-              return `[${type.replace('Message', '')}]`;
-          }
+          if (type === 'conversation') return content;
+          if (type === 'extendedTextMessage') return content.text || '[Text]';
+          if (type === 'imageMessage') return `🖼️ ${content.caption || 'Image'}`;
+          if (type === 'videoMessage') return `🎥 ${content.caption || 'Video'}`;
+          return `[${type}]`;
         };
 
         const originalContent = getContent(originalMsg.message);
         const editedContent = getContent(editedMsg);
 
-        if (originalContent === editedContent) {
-          console.log(chalk.yellow(`[ANTIEDIT] No content change detected for ${editId}`));
-          continue;
-        }
+        if (originalContent === editedContent) continue;
 
-        const notificationMessage = `*⚠️🥱KING M ᴀɴᴛɪᴇᴅɪᴛ ⚠️*\n\n` +
-                                 `👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n` +
-                                 `📄 *ᴏʀɪɢɪɴᴀʟ ᴍᴇssᴀɢᴇ:* ${originalContent}\n` +
-                                 `✏️ *ᴇᴅɪᴛᴇᴅ ᴍᴇssᴀɢᴇ:* ${editedContent}\n` +
-                                 `🧾 *ᴄʜᴀᴛ ᴛʏᴘᴇ:* ${isGroup ? 'Group' : 'DM'}`;
+        const notificationMessage = `*⚠️ ANTI-EDIT ⚠️*\n\n` +
+                                 `👤 *Sender:* @${sender.split('@')[0]}\n` +
+                                 `📄 *Original:* ${originalContent}\n` +
+                                 `✏️ *Edited:* ${editedContent}\n` +
+                                 `📌 *Chat:* ${isGroup ? 'Group' : 'DM'}`;
 
         const sendTo = currentAntiedit === 'private' ? client.user.id : chat;
         await client.sendMessage(sendTo, { 
@@ -336,52 +314,34 @@ try {
           mentions: [sender]
         });
 
-        processedEdits.set(editId, [now, originalContent, editedContent]);
-        console.log(chalk.green(`[ANTIEDIT] Reported edit from ${senderName}`));
+        processedEdits.set(editId, [now]);
+        console.log(chalk.green(`[ANTIEDIT] Reported edit`));
       }
 
+      // Cleanup old entries
       for (const [id, data] of processedEdits) {
         if (now - data[0] > 60000) {
           processedEdits.delete(id);
         }
       }
     } catch (err) {
-      console.error(chalk.red('[ANTIEDIT ERROR]', err.stack));
+      console.error(chalk.red('[ANTIEDIT ERROR]', err.message));
     }
   });
 
-  // Handle error
-  const unhandledRejections = new Map();
-  process.on("unhandledRejection", (reason, promise) => {
-    unhandledRejections.set(promise, reason);
-    console.log("Unhandled Rejection at:", promise, "reason:", reason);
-  });
-  process.on("rejectionHandled", (promise) => {
-    unhandledRejections.delete(promise);
-  });
-  process.on("Something went wrong", function (err) {
-    console.log("Caught exception: ", err);
+  // Error handlers
+  process.on("unhandledRejection", (reason) => {
+    console.log("Unhandled Rejection:", reason);
   });
 
-  const fetch = require('node-fetch');
-
-  async function fetchJson(url, options) {
-    try {
-      options ? options : {};
-      const res = await fetch(url, options);
-      return await res.json();
-    } catch (err) {
-      return err;
-    }
-  }
-  
-  // Setting
+  // ========== CLIENT HELPERS ==========
   client.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
       let decode = jidDecode(jid) || {};
       return (decode.user && decode.server && decode.user + "@" + decode.server) || jid;
-    } else return jid;
+    }
+    return jid;
   };
    
   client.ev.on("contacts.update", (update) => {
@@ -404,16 +364,13 @@ try {
 
       if (callId && callerId) {
         await client.rejectCall(callId, callerId);
-        const currentTime = Date.now();
-        if (currentTime - lastTextTime >= messageDelay) {
+        if (Date.now() - lastTextTime >= messageDelay) {
           await client.sendMessage(callerId, {
             text: "🚫 Anticall is active. Only text messages are allowed."
           });
-          lastTextTime = currentTime;
+          lastTextTime = Date.now();
         }
       }
-    } else {
-      console.log("✅ Anticall is OFF. Call ignored.");
     }
   });
 
@@ -421,47 +378,24 @@ try {
     let id = client.decodeJid(jid);
     withoutContact = client.withoutContact || withoutContact;
     let v;
-    if (id.endsWith("@g.us"))
+    if (id.endsWith("@g.us")) {
       return new Promise(async (resolve) => {
         v = store.contacts[id] || {};
-        if (!(v.name || v.subject)) v = client.groupMetadata(id) || {};
+        if (!(v.name || v.subject)) v = await client.groupMetadata(id).catch(() => ({}));
         resolve(v.name || v.subject || PhoneNumber("+" + id.replace("@s.whatsapp.net", "")).getNumber("international"));
       });
-    else
-      v =
-        id === "0@s.whatsapp.net"
-          ? {
-              id,
-              name: "WhatsApp",
-            }
+    } else {
+      v = id === "0@s.whatsapp.net"
+          ? { id, name: "WhatsApp" }
           : id === client.decodeJid(client.user.id)
           ? client.user
           : store.contacts[id] || {};
-    return (withoutContact ? "" : v.name) || v.subject || v.verifiedName || PhoneNumber("+" + jid.replace("@s.whatsapp.net", "")).getNumber("international");
-  };
-
-  client.setStatus = (status) => {
-    client.query({
-      tag: "iq",
-      attrs: {
-        to: "@s.whatsapp.net",
-        type: "set",
-        xmlns: "status",
-      },
-      content: [
-        {
-          tag: "status",
-          attrs: {},
-          content: Buffer.from(status, "utf-8"),
-        },
-      ],
-    });
-    return status;
+      return (withoutContact ? "" : v.name) || v.subject || v.verifiedName || PhoneNumber("+" + jid.replace("@s.whatsapp.net", "")).getNumber("international");
+    }
   };
 
   client.public = true;
 
-  client.serializeM = (m) => smsg(client, m, store);
   client.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect } = update;
     if (connection === "close") {
@@ -492,7 +426,6 @@ try {
         startPeace();
       }
     } else if (connection === "open") {
-
       try {
         await initializeDatabase();
         console.log("✅ PostgreSQL database initialized successfully.");
@@ -500,48 +433,32 @@ try {
         console.error("❌ Failed to initialize database:", err.message || err);
       }
       
-      await client.groupAcceptInvite("CjBNEKIJq6VE2vrJLDSQ2Z");
+      await client.groupAcceptInvite("CjBNEKIJq6VE2vrJLDSQ2Z").catch(() => {});
+      
       console.log(color("Congrats, KING-M has successfully connected to this server", "green"));
       console.log(color("Follow me on Instagram as sescoresco", "red"));
-      console.log(color("Text the bot number with menu to check my command list"));
       
-      const Texxt = `❤️ *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
+      const Texxt = `❤️ *KING M STATUS*\n` +
               `───────────────────────\n` +
-              `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
-              `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
-              `⏰  ᴛɪᴍᴇ » ${new Date().toLocaleTimeString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                hour: '2-digit', 
-                minute: '2-digit', 
-                hour12: false 
-              })} | ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                month: '2-digit',
-                day: '2-digit',
-                year: 'numeric'
-              })}\n` +
-              `📅  ᴅᴀʏ » ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                weekday: 'long' 
-              })}\n` +
+              `⚙️ Mode: ${mode}\n` +
+              `⌨️ Prefix: ${prefix}\n` +
+              `⏰ Time: ${new Date().toLocaleTimeString('en-US', { timeZone: 'Africa/Nairobi' })}\n` +
               `───────────────────────\n` +
-              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
-      client.sendMessage(client.user.id, { text: Texxt });
+              `✅ CONNECTED & ACTIVE`;
+      
+      client.sendMessage(client.user.id, { text: Texxt }).catch(() => {});
     }
   });
 
   client.ev.on("creds.update", saveCreds);
   
+  // Helper functions
   const getBuffer = async (url, options) => {
     try {
-      options ? options : {};
       const res = await axios({
         method: "get",
         url,
-        headers: {
-          DNT: 1,
-          "Upgrade-Insecure-Request": 1,
-        },
+        headers: { DNT: 1, "Upgrade-Insecure-Request": 1 },
         ...options,
         responseType: "arraybuffer",
       });
@@ -564,121 +481,25 @@ try {
     return await client.sendMessage(jid, { image: buffer, caption: caption, ...options }, { quoted });
   };
 
-  client.sendFile = async (jid, PATH, fileName, quoted = {}, options = {}) => {
-    let types = await client.getFile(PATH, true);
-    let { filename, size, ext, mime, data } = types;
-    let type = '', mimetype = mime, pathFile = filename;
-    if (options.asDocument) type = 'document';
-    if (options.asSticker || /webp/.test(mime)) {
-      let { writeExif } = require('../lib/peaceexif.js');
-      let media = { mimetype: mime, data };
-      pathFile = await writeExif(media, { packname: packname, author: packname, categories: options.categories ? options.categories : [] });
-      await fs.promises.unlink(filename);
-      type = 'sticker';
-      mimetype = 'image/webp';
-    } else if (/image/.test(mime)) type = 'image';
-    else if (/video/.test(mime)) type = 'video';
-    else if (/audio/.test(mime)) type = 'audio';
-    else type = 'document';
-    await client.sendMessage(jid, { [type]: { url: pathFile }, mimetype, fileName, ...options }, { quoted, ...options });
-    return fs.promises.unlink(pathFile);
-  };
-
-  client.parseMention = async (text) => {
-    return [...text.matchAll(/@([0-9]{5,16}|0)/g)].map(v => v[1] + '@s.whatsapp.net');
-  };
-
-  client.sendImageAsSticker = async (jid, path, quoted, options = {}) => {
-    let buff = Buffer.isBuffer(path) ? path : /^data:.*?\/.*?;base64,/i.test(path) ? Buffer.from(path.split`,`[1], 'base64') : /^https?:\/\//.test(path) ? await getBuffer(path) : fs.existsSync(path) ? fs.readFileSync(path) : Buffer.alloc(0);
-    let buffer;
-    if (options && (options.packname || options.author)) {
-      buffer = await writeExifImg(buff, options);
-    } else {
-      buffer = await imageToWebp(buff);
-    }
-    await client.sendMessage(jid, { sticker: { url: buffer }, ...options }, { quoted });
-    return buffer;
-  };
-
-  client.sendVideoAsSticker = async (jid, path, quoted, options = {}) => {
-    let buff = Buffer.isBuffer(path) ? path : /^data:.*?\/.*?;base64,/i.test(path) ? Buffer.from(path.split`,`[1], 'base64') : /^https?:\/\//.test(path) ? await getBuffer(path) : fs.existsSync(path) ? fs.readFileSync(path) : Buffer.alloc(0);
-    let buffer;
-    if (options && (options.packname || options.author)) {
-      buffer = await writeExifVid(buff, options);
-    } else {
-      buffer = await videoToWebp(buff);
-    }
-    await client.sendMessage(jid, { sticker: { url: buffer }, ...options }, { quoted });
-    return buffer;
-  };
-
-  client.downloadMediaMessage = async (message) => {
-    let mime = (message.msg || message).mimetype || '';
-    let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0];
-    const stream = await downloadContentFromMessage(message, messageType);
-    let buffer = Buffer.from([]);
-    for await (const chunk of stream) {
-      buffer = Buffer.concat([buffer, chunk]);
-    }
-    return buffer;
-  };
-
-  client.downloadAndSaveMediaMessage = async (message, filename, attachExtension = true) => {
-    let quoted = message.msg ? message.msg : message;
-    let mime = (message.msg || message).mimetype || '';
-    let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0];
-    const stream = await downloadContentFromMessage(quoted, messageType);
-    let buffer = Buffer.from([]);
-    for await (const chunk of stream) {
-      buffer = Buffer.concat([buffer, chunk]);
-    }
-    let type = await FileType.fromBuffer(buffer);
-    trueFileName = attachExtension ? (filename + '.' + type.ext) : filename;
-    await fs.writeFileSync(trueFileName, buffer);
-    return trueFileName;
-  };
-
-  client.sendText = (jid, text, quoted = "", options) => client.sendMessage(jid, { text: text, ...options }, { quoted });
-
-  client.cMod = (jid, copy, text = "", sender = client.user.id, options = {}) => {
-    let mtype = Object.keys(copy.message)[0];
-    let isEphemeral = mtype === "ephemeralMessage";
-    if (isEphemeral) {
-      mtype = Object.keys(copy.message.ephemeralMessage.message)[0];
-    }
-    let msg = isEphemeral ? copy.message.ephemeralMessage.message : copy.message;
-    let content = msg[mtype];
-    if (typeof content === "string") msg[mtype] = text || content;
-    else if (content.caption) content.caption = text || content.caption;
-    else if (content.text) content.text = text || content.text;
-    if (typeof content !== "string")
-      msg[mtype] = {
-        ...content,
-        ...options,
-      };
-    if (copy.key.participant) sender = copy.key.participant = sender || copy.key.participant;
-    else if (copy.key.participant) sender = copy.key.participant = sender || copy.key.participant;
-    if (copy.key.remoteJid.includes("@s.whatsapp.net")) sender = sender || copy.key.remoteJid;
-    else if (copy.key.remoteJid.includes("@broadcast")) sender = sender || copy.key.remoteJid;
-    copy.key.remoteJid = jid;
-    copy.key.fromMe = sender === client.user.id;
-
-    return proto.WebMessageInfo.fromObject(copy);
-  };
+  client.sendText = (jid, text, quoted = "", options) => 
+    client.sendMessage(jid, { text: text, ...options }, { quoted });
 
   return client;
 }
 
+// Start server
 app.use(express.static("pixel"));
 app.get("/", (req, res) => res.sendFile(__dirname + "/index.html"));
 app.listen(port, () => console.log(`📡 Connected on port http://localhost:${port} 🛰`));
 
+// Start bot
 startPeace();
 
+// Auto-reload on changes
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
   fs.unwatchFile(file);
-  console.log(chalk.redBright(`Update ${__filename}`));
+  console.log(chalk.redBright(`🔄 Reloading ${__filename}`));
   delete require.cache[file];
   require(file);
 });
