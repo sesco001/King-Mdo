@@ -8,10 +8,25 @@ const translatte = require('translatte');
 global.axios = require('axios').default
 const chalk = require("chalk");
 const speed = require("performance-now");
-const { logMessage, logSpeed, logError, logInfo, logWarn } = require('../lib/logger');
+
+// REMOVED: const { logMessage, logSpeed, logError, logInfo, logWarn } = require('../lib/logger'); 
+
 const Genius = require("genius-lyrics");
 const yts = require("yt-search");
 let lastTextTime = 0;
+
+const logMessage = (data) => {
+    console.log(chalk.magenta('=============================='));
+    console.log(chalk.white(`[${data.time}] ${data.sender}`));
+    console.log(chalk.blue(`Type: ${data.type}`));
+    console.log(chalk.green(`Msg:  ${data.message}`));
+    console.log(chalk.magenta('=============================='));
+};
+const logSpeed = (ms) => console.log(chalk.yellow(`[SPEED]`), ms + 'ms');
+const logError = (type, err) => console.log(chalk.red(`[ERROR - ${type}]`), err);
+const logInfo = (msg) => console.log(chalk.cyan(`[INFO]`), msg);
+const logWarn = (msg) => console.log(chalk.yellow(`[WARN]`), msg);
+
 const messageDelay = 3000;
 const ffmpeg = require("fluent-ffmpeg");
 const fetch = require("node-fetch");
