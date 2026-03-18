@@ -40,6 +40,30 @@ const color = (text, color) => {
 };
 
 authenticationn();
+// Add these helper functions for LID resolution
+function isLidJid(jid) {
+    return jid?.includes('lid:') || jid?.includes('@lid') || jid?.includes('@newsletter');
+}
+
+async function resolveLidToPhone(lid, sock) {
+    try {
+        // Try Baileys' own lidMapping
+        if (sock?.signalRepository?.lidMapping) {
+            const pn = await sock.signalRepository.lidMapping.getPNForLID(lid);
+            if (pn) return `${pn}@s.whatsapp.net`;
+        }
+    } catch (e) {}
+    
+    // Fallback: check store contacts
+    if (store?.contacts) {
+        for (const [jid, contact] of Object.entries(store.contacts)) {
+            if (contact.lid === lid || contact.id === lid) {
+                return jid;
+            }
+        }
+    }
+    return null;
+}
 
 
 const processedEdits = new Set();
@@ -103,32 +127,92 @@ try {
       mek.message = Object.keys(mek.message)[0] === "ephemeralMessage" ? mek.message.ephemeralMessage.message : mek.message;
 
       
- if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
-        client.readMessages([mek.key]);
-      }
+// Auto View Status
+if (autoview === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
+    try {
+        // Don't auto-view own status
+        if (mek.key.fromMe) return;
+        
+        // Resolve LID to phone JID for proper read receipt
+        const rawParticipant = mek.key.participant;
+        let phoneJid = null;
+        
+        if (isLidJid(rawParticipant)) {
+            phoneJid = await resolveLidToPhone(rawParticipant, client);
+        } else {
+            phoneJid = rawParticipant;
+        }
+        
+        if (phoneJid && !isLidJid(phoneJid)) {
+            const readKey = { ...mek.key, participant: phoneJid };
+            await client.readMessages([readKey]);
+        } else {
+            await client.readMessages([mek.key]); // Fallback
+        }
+    } catch (e) {
+        // Fallback to original key
+        await client.readMessages([mek.key]);
+    }
+}
             
+// Auto Like/React Status
 if (autoview === 'on' && autolike === 'on' && mek.key && mek.key.remoteJid === "status@broadcast") {
     try {
-        // Don't use decodeJid - just get the user ID directly
-        const myJid = client.user.id;
+        // Don't auto-react to own status
+        if (mek.key.fromMe) return;
+        
+        // Get bot's number for exclusion
+        const botNum = (client.user?.id || '').split('@')[0].split(':')[0];
+        
+        // Resolve the participant JID properly
+        const rawParticipant = mek.key.participant;
+        let phoneJid = null;
+        
+        if (isLidJid(rawParticipant)) {
+            phoneJid = await resolveLidToPhone(rawParticipant, client);
+        } else {
+            phoneJid = rawParticipant;
+        }
+        
+        // Skip if it's the bot's own status
+        const senderNum = (phoneJid || rawParticipant || '').split('@')[0].split(':')[0];
+        if (botNum && senderNum === botNum) return;
+        
+        // Only proceed if we have a valid phone JID for reactions
+        if (!phoneJid || isLidJid(phoneJid)) {
+            console.log('⚠️ Skipping reaction - could not resolve LID to phone JID');
+            return;
+        }
+        
         const emojis = ['🗿', '⌚️', '💠', '👣', '🍆', '💔', '🤍', '❤️‍🔥', '💣', '🧠', '🦅', '🌻', '🧊', '🛑', '🧸', '👑', '📍', '😅', '🎭', '🎉', '😳', '💯', '🔥', '💫', '🐒', '💗', '❤️‍🔥', '👁️', '👀', '🙌', '🙆', '🌟', '💧', '🦄', '🟢', '🎎', '✅', '🥱', '🌚', '💚', '💕', '😉', '😒'];
         const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
         
         // Small delay before reacting
-        await sleep(1000);
+        await sleep(1500);
         
-        await client.sendMessage(mek.key.remoteJid, { 
-            react: { 
-                text: randomEmoji, 
-                key: mek.key 
-            } 
-        }, { 
-            statusJidList: [mek.key.participant, myJid] 
-        });
+        // Create reaction with resolved phone JID (not LID)
+        const reactKey = { 
+            ...mek.key, 
+            participant: phoneJid  // Use phone JID, not LID
+        };
         
-        console.log('✅ Reaction sent successfully');
+        await client.sendMessage(
+            'status@broadcast', 
+            { 
+                react: { 
+                    text: randomEmoji, 
+                    key: reactKey 
+                } 
+            }, 
+            { 
+                statusJidList: [phoneJid, client.user.id]  // Use phone JID here too
+            }
+        );
+        
+        console.log('✅ Reaction sent successfully to', phoneJid.split('@')[0]);
+        
     } catch (err) {
-        console.error('❌ Failed to send reaction:', err);
+        console.error('❌ Failed to send reaction:', err.message || err);
     }
 }
       
@@ -167,9 +251,10 @@ if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
         if (!editedMsg) continue;
 
         // Get both messages properly
-        const originalMsg = await store.loadMessage(chat, key.id) || {};
-        const sender = key.participant || key.remoteJid;
-        const senderName = await client.getName(sender);
+     // Get both messages properly - FIX THIS LINE
+const originalMsg = (store && typeof store.loadMessage === 'function') 
+    ? await store.loadMessage(chat, key.id) || {} 
+    : store.messages?.[chat]?.get(key.id) || {};
 
         // Enhanced content extractor
         const getContent = (msg) => {
