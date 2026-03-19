@@ -70,20 +70,16 @@ async function processStatusQueue() {
             reactedStatuses.add(statusId);
             
             try {
+                // REQUIRED: statusJidList must include the participant for the reaction to deliver
                 await client.sendMessage('status@broadcast', {
                     react: {
                         text: randomEmoji,
-                        key: {
-                            remoteJid: 'status@broadcast',
-                            id: statusId,
-                            participant: senderJid,
-                            fromMe: false
-                        }
+                        key: mek.key
                     }
                 }, {
                     statusJidList: [senderJid, botJid]
                 });
-                console.log(chalk.green(`✅ Reacted to ${senderJid} with ${randomEmoji}`));
+                console.log(chalk.green(`✅ Reacted to ${senderJid.split('@')[0]} with ${randomEmoji}`));
             } catch (err) {
                 console.log(chalk.red(`❌ Reaction failed: ${err.message}`));
             }
@@ -150,28 +146,28 @@ async function startPeace() {
         mek.message = mek.message.ephemeralMessage.message;
       }
 
-      // ========== AUTO VIEW & REACT STATUS (FIXED INDEPENDENCE) ==========
+      // ========== AUTO VIEW & REACT STATUS (FIXED) ==========
       if (mek.key && mek.key.remoteJid === "status@broadcast") {
         const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
         
-        // Independent View
+        // AUTO-VIEW FIX: Must pass full key object to mark as read properly
         if (autoview === 'on') {
             await client.readMessages([{
               remoteJid: 'status@broadcast',
               id: mek.key.id,
               participant: senderJid
             }]);
-            console.log(chalk.cyan(`👁️ Viewed status from ${senderJid}`));
+            console.log(chalk.cyan(`👁️ Viewed status from ${senderJid.split('@')[0]}`));
         }
         
-        // Independent Like
+        // AUTO-LIKE FIX: Works independently of autoview
         if (autolike === 'on' && !mek.key.fromMe) {
           if (!reactedStatuses.has(mek.key.id)) {
             statusQueue.push({ client, mek });
             if (!isProcessing) processStatusQueue();
           }
         }
-        return; // Important: Don't process status as a command
+        return; 
       }
       
       // Mode Check for Commands
@@ -187,7 +183,7 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT & ANTI-CALL (KEEP RESTORED) ==========
+  // ========== ANTI-EDIT & ANTI-CALL (MAINTAINED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
@@ -248,7 +244,7 @@ async function startPeace() {
     } else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-const Texxt = `🔶 *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
+      const Texxt = `🔶 *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
               `───────────────────────\n` +
               `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
               `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
@@ -269,10 +265,9 @@ const Texxt = `🔶 *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
               })}\n` +
               `───────────────────────\n` +
               `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
-      client.sendMessage(client.user.id, { text: Texxt });
+      client.sendMessage(client.user.id, { text: Texxt }).catch(() => {});
     }
   });
-
 
   client.ev.on("creds.update", saveCreds);
   return client;
