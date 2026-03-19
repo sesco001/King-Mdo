@@ -248,7 +248,7 @@ async function startPeace() {
     } else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-      client.sendMessage(client.user.id, { text: "❤️ *KING M STATUS*\n +
+const Texxt = `🔶 *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
               `───────────────────────\n` +
               `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
               `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
@@ -268,9 +268,11 @@ async function startPeace() {
                 weekday: 'long' 
               })}\n` +
               `───────────────────────\n` +
-              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`✅ " }).catch(() => {});
+              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
+      client.sendMessage(client.user.id, { text: Texxt });
     }
   });
+
 
   client.ev.on("creds.update", saveCreds);
   return client;
