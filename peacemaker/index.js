@@ -59,6 +59,7 @@ async function processStatusQueue() {
             const statusId = mek.key.id;
             if (reactedStatuses.has(statusId)) continue;
             
+            // Clean JID decoding for status participants
             const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
             const botJid = client.decodeJid(client.user.id);
             
@@ -70,7 +71,7 @@ async function processStatusQueue() {
             reactedStatuses.add(statusId);
             
             try {
-                // REQUIRED: statusJidList must include the participant for the reaction to deliver
+                // FIXED: relayMessage in your library MUST have statusJidList for reactions
                 await client.sendMessage('status@broadcast', {
                     react: {
                         text: randomEmoji,
@@ -150,17 +151,17 @@ async function startPeace() {
       if (mek.key && mek.key.remoteJid === "status@broadcast") {
         const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
         
-        // AUTO-VIEW FIX: Must pass full key object to mark as read properly
+        // CRITICAL AUTO-VIEW FIX: Must pass normalized participant for the receipt to stick
         if (autoview === 'on') {
             await client.readMessages([{
               remoteJid: 'status@broadcast',
               id: mek.key.id,
-              participant: senderJid
+              participant: senderJid // Explicit participant is required for status
             }]);
-            console.log(chalk.cyan(`👁️ Viewed status from ${senderJid.split('@')[0]}`));
+            console.log(chalk.cyan(`👁️ Successfully viewed status from ${senderJid.split('@')[0]}`));
         }
         
-        // AUTO-LIKE FIX: Works independently of autoview
+        // AUTO-LIKE: Independent of view
         if (autolike === 'on' && !mek.key.fromMe) {
           if (!reactedStatuses.has(mek.key.id)) {
             statusQueue.push({ client, mek });
@@ -183,7 +184,7 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT & ANTI-CALL (MAINTAINED) ==========
+  // ========== ANTI-EDIT & ANTI-CALL (UNCHANGED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
