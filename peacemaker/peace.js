@@ -5727,31 +5727,63 @@ case 'viewonce': {
 }
 
 //========================================================================================================================//                  
-              case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+            case "alaa": 
+case "wiih": 
+case "waah": 
+case "ehee": 
+case "vv2": 
+case "mmmh": {
+    try {
+        if (!m.quoted) return m.reply("Please reply to a media or view-once message.");
 
-  if (!m.quoted) return m.reply("Hurrahhh");
+        // 1. Correctly extract the message content
+        // We use normalizeMessageContent to handle viewOnce/ephemeral wrappers automatically
+        const { normalizeMessageContent } = require('@whiskeysockets/baileys');
+        const quotedMsg = normalizeMessageContent(m.quoted.message);
+        
+        // 2. Identify the media type
+        const type = Object.keys(quotedMsg)[0];
+        const media = quotedMsg[type];
 
-  const quotedMessage = m.msg?.contextInfo?.quotedMessage;
+        if (!media || !(/image|video|audio|sticker|document/.test(type))) {
+            return m.reply("The replied message does not contain supported media.");
+        }
 
-  if (quotedMessage.imageMessage) {
-    let imageCaption = quotedMessage.imageMessage.caption || "No Caption";
-    let imagePath = await client.downloadAndSaveMediaMessage(quotedMessage.imageMessage);
+        // 3. Download the media stream
+        // This is the native way your library handles downloads
+        const stream = await downloadContentFromMessage(
+            media,
+            type.replace('Message', '')
+        );
 
-    await client.sendMessage(client.user.id, {
-      image: { url: imagePath },
-      caption: `✨ *KING Mis alive!* ✨\n\n${imageCaption}`
-    }, { quoted: m });
-  }
+        // 4. Convert stream to Buffer
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
-  if (quotedMessage.videoMessage) {
-    let videoCaption = quotedMessage.videoMessage.caption || "No Caption";
-    let videoPath = await client.downloadAndSaveMediaMessage(quotedMessage.videoMessage);
+        const caption = media.caption || "No Caption";
+        const finalCaption = `✨ *KING M is alive!* ✨\n\n${caption}`;
 
-    await client.sendMessage(client.user.id, {
-      video: { url: videoPath },
-      caption: `✨ *KING M is alive!* ✨\n\n${videoCaption}`
-    }, { quoted: m });
-  }
+        // 5. Send to your own ID (private) as requested
+        if (/image/.test(type)) {
+            await client.sendMessage(client.user.id, { image: buffer, caption: finalCaption }, { quoted: m });
+        } else if (/video/.test(type)) {
+            await client.sendMessage(client.user.id, { video: buffer, caption: finalCaption }, { quoted: m });
+        } else {
+            // For audio/stickers/docs
+            await client.sendMessage(client.user.id, { [type.replace('Message', '')]: buffer }, { quoted: m });
+        }
+
+    } catch (err) {
+        // Use the safe logError fix we discussed to prevent crashes
+        if (typeof logError === 'function') {
+            logError('VV2', err);
+        } else {
+            console.error(err);
+        }
+        m.reply("Failed to process media. Ensure the media hasn't expired.");
+    }
 }
 break;
 
