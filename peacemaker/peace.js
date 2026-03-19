@@ -13,12 +13,11 @@ const yts = require("yt-search");
 let lastTextTime = 0;
 const messageDelay = 3000;
 // Add these helper functions at the top of peacemaker/peace.js
+// Updated logError in peacemaker/peace.js
 const logError = (command, err) => {
-    console.log(chalk.red(`[ERROR] In ${command}: `) + chalk.white(err.message || err));
-};
-
-const logInfo = (message) => {
-    console.log(chalk.cyan(`[INFO] `) + chalk.white(message));
+    // Safely extract the message or provide a fallback string
+    const errorMessage = (err && err.message) ? err.message : (err || "Unknown Command/Error");
+    console.log(chalk.red(`[ERROR] In ${command.toUpperCase()}: `) + chalk.white(errorMessage));
 };
 const ffmpeg = require("fluent-ffmpeg");
 const fetch = require("node-fetch");
