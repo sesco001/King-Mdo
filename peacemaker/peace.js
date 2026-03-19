@@ -12,6 +12,14 @@ const Genius = require("genius-lyrics");
 const yts = require("yt-search");
 let lastTextTime = 0;
 const messageDelay = 3000;
+// Add these helper functions at the top of peacemaker/peace.js
+const logError = (command, err) => {
+    console.log(chalk.red(`[ERROR] In ${command}: `) + chalk.white(err.message || err));
+};
+
+const logInfo = (message) => {
+    console.log(chalk.cyan(`[INFO] `) + chalk.white(message));
+};
 const ffmpeg = require("fluent-ffmpeg");
 const fetch = require("node-fetch");
 const { DateTime } = require('luxon');
