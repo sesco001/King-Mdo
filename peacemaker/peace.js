@@ -5687,32 +5687,44 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
-case "vv": case "retrieve": {
-  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video to retrieve it.");
+case 'vv':
+case 'viewonce': {
+    try {
+        // 1. Check if the message is a view-once message
+        let q = m.quoted ? m.quoted : m;
+        let type = Object.keys(q.message || {})[0];
+        
+        if (!q.message[type].viewOnce) {
+            return m.reply("Please reply to a view-once message.");
+        }
 
-  const quotedMessage = m.msg?.contextInfo?.quotedMessage;
+        // 2. Extract the actual media content
+        let mediaContent = q.message[type].message;
+        let mediaType = Object.keys(mediaContent)[0];
+        
+        // 3. Download the media using the standard Baileys method
+        const stream = await downloadContentFromMessage(
+            mediaContent[mediaType],
+            mediaType.replace('Message', '')
+        );
+        
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
-  if (quotedMessage.imageMessage) {
-    let imageCaption = quotedMessage.imageMessage.caption || "No Caption";
-    let imagePath = await client.downloadAndSaveMediaMessage(quotedMessage.imageMessage);
-
-    await client.sendMessage(m.chat, {
-      image: { url: imagePath },
-      caption: `✨ *KING M is alive!* ✨\n\n${imageCaption}`
-    }, { quoted: m });
-  }
-
-  if (quotedMessage.videoMessage) {
-    let videoCaption = quotedMessage.videoMessage.caption || "No Caption";
-    let videoPath = await client.downloadAndSaveMediaMessage(quotedMessage.videoMessage);
-
-    await client.sendMessage(m.chat, {
-      video: { url: videoPath },
-      caption: `✨ *KING M is alive!* ✨\n\n${videoCaption}`
-    }, { quoted: m });
-  }
+        // 4. Send the media back to the user
+        if (/image/.test(mediaType)) {
+            await client.sendMessage(m.chat, { image: buffer, caption: "Success" }, { quoted: m });
+        } else if (/video/.test(mediaType)) {
+            await client.sendMessage(m.chat, { video: buffer, caption: "Success" }, { quoted: m });
+        }
+    } catch (err) {
+        logError('VV', err);
+        m.reply("Failed to download View Once media.");
+    }
+    break;
 }
-break;
 
 //========================================================================================================================//                  
               case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
