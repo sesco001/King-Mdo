@@ -43,13 +43,11 @@ const color = (text, color) => {
 authenticationn();
 
 const processedEdits = new Set();
-const EDIT_COOLDOWN = 5000; 
-
-// ==================== STATUS REACTION SYSTEM ====================
 const reactedStatuses = new Set();
 const statusQueue = [];
 let isProcessing = false;
 
+// ==================== STATUS REACTION SYSTEM ====================
 async function processStatusQueue() {
     if (isProcessing || statusQueue.length === 0) return;
     isProcessing = true;
@@ -111,7 +109,7 @@ async function startPeace() {
   }
 
   const { state, saveCreds } = await useMultiFileAuthState("session");
-  const { version, isLatest } = await fetchLatestBaileysVersion();
+  const { version } = await fetchLatestBaileysVersion();
 
   const client = peaceConnect({
     version,
@@ -122,7 +120,6 @@ async function startPeace() {
     syncFullHistory: true,
   });
 
-  // ========== CLIENT HELPERS ==========
   client.decodeJid = (jid) => {
     if (!jid) return jid;
     if (/:\d+@/gi.test(jid)) {
@@ -132,29 +129,14 @@ async function startPeace() {
     return jid;
   };
 
-  client.getName = (jid, withoutContact = false) => {
-    let id = client.decodeJid(jid);
-    let v;
-    if (id.endsWith("@g.us")) {
-      return new Promise(async (resolve) => {
-        v = store.contacts[id] || {};
-        if (!(v.name || v.subject)) v = await client.groupMetadata(id).catch(() => ({}));
-        resolve(v.name || v.subject || PhoneNumber("+" + id.replace("@s.whatsapp.net", "")).getNumber("international"));
-      });
-    } else {
-      v = id === "0@s.whatsapp.net" ? { id, name: "WhatsApp" } : id === client.decodeJid(client.user.id) ? client.user : store.contacts[id] || {};
-      return (withoutContact ? "" : v.name) || v.subject || v.verifiedName || PhoneNumber("+" + jid.replace("@s.whatsapp.net", "")).getNumber("international");
-    }
-  };
-
   // Auto bio update
   if (autobio === 'on') {
     setInterval(() => {
       const date = new Date();
       client.updateProfileStatus(
         `📅 ${date.toLocaleString('en-US', { timeZone: 'Africa/Nairobi' })} | KING M`
-      );
-    }, 30 * 1000);
+      ).catch(() => {});
+    }, 60 * 1000);
   }
 
   store.bind(client.ev);
@@ -164,14 +146,15 @@ async function startPeace() {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       
-      if (Object.keys(mek.message)[0] === "ephemeralMessage") {
+      if (mek.message.ephemeralMessage) {
         mek.message = mek.message.ephemeralMessage.message;
       }
 
-      // ========== AUTO VIEW & REACT STATUS ==========
+      // ========== AUTO VIEW & REACT STATUS (FIXED INDEPENDENCE) ==========
       if (mek.key && mek.key.remoteJid === "status@broadcast") {
         const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
         
+        // Independent View
         if (autoview === 'on') {
             await client.readMessages([{
               remoteJid: 'status@broadcast',
@@ -181,15 +164,19 @@ async function startPeace() {
             console.log(chalk.cyan(`👁️ Viewed status from ${senderJid}`));
         }
         
-        if (autoview === 'on' && autolike === 'on' && !mek.key.fromMe) {
+        // Independent Like
+        if (autolike === 'on' && !mek.key.fromMe) {
           if (!reactedStatuses.has(mek.key.id)) {
             statusQueue.push({ client, mek });
             if (!isProcessing) processStatusQueue();
           }
         }
+        return; // Important: Don't process status as a command
       }
       
-      if (!client.public && !mek.key.fromMe && chatUpdate.type === "notify") return;
+      // Mode Check for Commands
+      const isMe = mek.key.fromMe;
+      if (mode === 'private' && !isMe) return;
       
       let m = smsg(client, mek, store);
       const peace = require("../peacemaker/peace");
@@ -200,12 +187,11 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT SYSTEM RESTORED ==========
+  // ========== ANTI-EDIT & ANTI-CALL (KEEP RESTORED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
       if (currentAntiedit === 'off') return;
-      const now = Date.now();
       for (const update of messageUpdates) {
         const { key, update: { message } } = update;
         if (!key?.id || !message) continue;
@@ -231,12 +217,11 @@ async function startPeace() {
 
         const sendTo = currentAntiedit === 'private' ? client.user.id : key.remoteJid;
         await client.sendMessage(sendTo, { text: notificationMessage, mentions: [sender] }).catch(() => {});
-        processedEdits.set(editId, [now]);
+        processedEdits.add(editId);
       }
     } catch (err) { console.error(chalk.red('[ANTIEDIT ERROR]', err.message)); }
   });
 
-  // ========== ANTI-CALL SYSTEM RESTORED ==========
   client.ev.on('call', async (callData) => {
     const { anticall: dbAnticall } = await fetchSettings();
     if (dbAnticall === 'on') {
@@ -256,17 +241,38 @@ async function startPeace() {
     const { connection, lastDisconnect } = update;
     if (connection === "close") {
       let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      console.log(`Connection closed: ${reason}. Reconnecting...`);
-      startPeace();
+      if (reason !== DisconnectReason.loggedOut) {
+        console.log(`Connection closed: ${reason}. Reconnecting...`);
+        startPeace();
+      }
     } else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-      client.sendMessage(client.user.id, { text: "❤️ *KING M STATUS*\n✅ CONNECTED & ACTIVE" }).catch(() => {});
+      client.sendMessage(client.user.id, { text: "❤️ *KING M STATUS*\n +
+              `───────────────────────\n` +
+              `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
+              `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
+              `⏰  ᴛɪᴍᴇ » ${new Date().toLocaleTimeString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+              })} | ${new Date().toLocaleDateString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                month: '2-digit',
+                day: '2-digit',
+                year: 'numeric'
+              })}\n` +
+              `📅  ᴅᴀʏ » ${new Date().toLocaleDateString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                weekday: 'long' 
+              })}\n` +
+              `───────────────────────\n` +
+              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`✅ " }).catch(() => {});
     }
   });
 
   client.ev.on("creds.update", saveCreds);
-  client.public = true;
   return client;
 }
 
