@@ -5612,35 +5612,27 @@ case "whatsong": case "shazam": {
         break; 
                       
 //========================================================================================================================//
-        case "s": case "sticker": 
-{
-const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
+case "s": 
+case "sticker": {
+    const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+    try {
+        if (!m.quoted) return m.reply('Reply to an image or video.');
+        const q = m.quoted;
+        const mime = (q.msg || q).mimetype || '';
+        const stream = await downloadContentFromMessage(q.msg || q, mime.split('/')[0]);
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
-if(!msgR) { m.reply('Quote an image or a short video.') ; return } ;
-let media;
-if (msgR.imageMessage) {
-     media = msgR.imageMessage
-  } else if(msgR.videoMessage) {
-media = msgR.videoMessage
-  } 
- else {
-    m.reply('That is neither an image nor a short video! '); return
-  } ;
-
-var result = await client.downloadAndSaveMediaMessage(media);
-
-let stickerResult = new Sticker(result, {
-            pack: packname,
-            author: author,
+        let stickerResult = new Sticker(buffer, {
+            pack: packname, // Default bot pack
+            author: author,   // Default bot author
             type: StickerTypes.FULL,
-            categories: ["🤩", "🎉"],
-            id: "12345",
-            quality: 70,
-            background: "transparent",
-          });
-const Buffer = await stickerResult.toBuffer();
-          client.sendMessage(m.chat, { sticker: Buffer }, { quoted: m });
-
+            quality: 70
+        });
+        await client.sendMessage(m.chat, { sticker: await stickerResult.toBuffer() }, { quoted: m });
+    } catch (err) {
+        logError('STICKER', err);
+    }
 }
 break;
 
@@ -5690,138 +5682,79 @@ break;
 case 'vv':
 case 'viewonce': {
     try {
-        // 1. Check if the message is a view-once message
-        let q = m.quoted ? m.quoted : m;
-        let type = Object.keys(q.message || {})[0];
-        
-        if (!q.message[type].viewOnce) {
-            return m.reply("Please reply to a view-once message.");
-        }
-
-        // 2. Extract the actual media content
-        let mediaContent = q.message[type].message;
-        let mediaType = Object.keys(mediaContent)[0];
-        
-        // 3. Download the media using the standard Baileys method
-        const stream = await downloadContentFromMessage(
-            mediaContent[mediaType],
-            mediaType.replace('Message', '')
-        );
-        
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) {
-            buffer = Buffer.concat([buffer, chunk]);
-        }
-
-        // 4. Send the media back to the user
-        if (/image/.test(mediaType)) {
-            await client.sendMessage(m.chat, { image: buffer, caption: "Success" }, { quoted: m });
-        } else if (/video/.test(mediaType)) {
-            await client.sendMessage(m.chat, { video: buffer, caption: "Success" }, { quoted: m });
-        }
-    } catch (err) {
-        logError('VV', err);
-        m.reply("Failed to download View Once media.");
-    }
-    break;
-}
-
-//========================================================================================================================//                  
-            case "alaa": 
-case "wiih": 
-case "waah": 
-case "ehee": 
-case "vv2": 
-case "mmmh": {
-    try {
-        if (!m.quoted) return m.reply("Please reply to a media or view-once message.");
-
-        // 1. Correctly extract the message content
-        // We use normalizeMessageContent to handle viewOnce/ephemeral wrappers automatically
+        if (!m.quoted) return m.reply("Please reply to a view-once message.");
         const { normalizeMessageContent } = require('@whiskeysockets/baileys');
         const quotedMsg = normalizeMessageContent(m.quoted.message);
-        
-        // 2. Identify the media type
         const type = Object.keys(quotedMsg)[0];
         const media = quotedMsg[type];
 
-        if (!media || !(/image|video|audio|sticker|document/.test(type))) {
-            return m.reply("The replied message does not contain supported media.");
-        }
+        if (!media || !media.viewOnce) return m.reply("This is not a view-once message.");
 
-        // 3. Download the media stream
-        // This is the native way your library handles downloads
-        const stream = await downloadContentFromMessage(
-            media,
-            type.replace('Message', '')
-        );
-
-        // 4. Convert stream to Buffer
+        const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
         let buffer = Buffer.from([]);
-        for await (const chunk of stream) {
-            buffer = Buffer.concat([buffer, chunk]);
-        }
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
-        const caption = media.caption || "No Caption";
-        const finalCaption = `✨ *KING M is alive!* ✨\n\n${caption}`;
-
-        // 5. Send to your own ID (private) as requested
         if (/image/.test(type)) {
-            await client.sendMessage(client.user.id, { image: buffer, caption: finalCaption }, { quoted: m });
+            await client.sendMessage(m.chat, { image: buffer, caption: "Retrieved View-Once" }, { quoted: m });
         } else if (/video/.test(type)) {
-            await client.sendMessage(client.user.id, { video: buffer, caption: finalCaption }, { quoted: m });
-        } else {
-            // For audio/stickers/docs
-            await client.sendMessage(client.user.id, { [type.replace('Message', '')]: buffer }, { quoted: m });
+            await client.sendMessage(m.chat, { video: buffer, caption: "Retrieved View-Once" }, { quoted: m });
         }
-
     } catch (err) {
-        // Use the safe logError fix we discussed to prevent crashes
-        if (typeof logError === 'function') {
-            logError('VV2', err);
-        } else {
-            console.error(err);
-        }
-        m.reply("Failed to process media. Ensure the media hasn't expired.");
+        logError('VV', err);
+        m.reply("Failed to retrieve. Media may have expired.");
     }
 }
 break;
 
 //========================================================================================================================//                  
-    case 'take': {
-const { Sticker, createSticker, StickerTypes } = require('wa-sticker-formatter');
+          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+    try {
+        if (!m.quoted) return m.reply("Please reply to a media message.");
+        const { normalizeMessageContent } = require('@whiskeysockets/baileys');
+        const quotedMsg = normalizeMessageContent(m.quoted.message);
+        const type = Object.keys(quotedMsg)[0];
+        const media = quotedMsg[type];
 
-if(!msgR) { m.reply('Quote an image, a short video or a sticker to change watermark.') ; return } ;
+        const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
-let media;
-if (msgR.imageMessage) {
-     media = msgR.imageMessage
-  } else if(msgR.videoMessage) {
-media = msgR.videoMessage
-  } 
-  else if (msgR.stickerMessage) {
-    media = msgR.stickerMessage ;
-  } else {
-    m.reply('This is neither a sticker, image nor a video...'); return
-  } ;
-
-var result = await client.downloadAndSaveMediaMessage(media);
-
-let stickerResult = new Sticker(result, {
-            pack: pushname,
-            author: pushname,
-            type: StickerTypes.FULL,
-            categories: ["🤩", "🎉"],
-            id: "12345",
-            quality: 70,
-            background: "transparent",
-          });
-const Buffer = await stickerResult.toBuffer();
-          client.sendMessage(m.chat, { sticker: Buffer }, { quoted: m });
-
+        const botId = client.user.id.split(':')[0] + "@s.whatsapp.net";
+        await client.sendMessage(botId, { 
+            [type.replace('Message', '')]: buffer, 
+            caption: `✨ *KING M DM Send* ✨\n\nFrom: @${m.sender.split('@')[0]}`,
+            mentions: [m.sender]
+        });
+        m.reply("✅");
+    } catch (err) {
+        logError('VV2', err);
+        m.reply("Failed.");
+    }
 }
 break;
 
+//========================================================================================================================//                  
+   case 'take': {
+    const { Sticker, StickerTypes } = require('wa-sticker-formatter');
+    try {
+        if (!m.quoted || m.quoted.mtype !== 'stickerMessage') return m.reply('Please reply to a sticker to "take" it.');
+        
+        const stream = await downloadContentFromMessage(m.quoted.message.stickerMessage, 'sticker');
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
+
+        let stickerResult = new Sticker(buffer, {
+            pack: pushname, // Sets the pack name to YOUR name
+            author: pushname, // Sets the author name to YOUR name
+            type: StickerTypes.FULL,
+            quality: 70
+        });
+        await client.sendMessage(m.chat, { sticker: await stickerResult.toBuffer() }, { quoted: m });
+    } catch (err) {
+        logError('TAKE', err);
+    }
+}
+break;
 //========================================================================================================================//      
 case 'ytsearch':
     case 'yts': {
