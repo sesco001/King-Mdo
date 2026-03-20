@@ -5616,26 +5616,27 @@ case "s":
 case "sticker": {
     const { Sticker, StickerTypes } = require('wa-sticker-formatter');
     try {
-        if (!m.quoted) return m.reply('Reply to an image or video.');
-        const q = m.quoted;
-        const mime = (q.msg || q).mimetype || '';
+        let q = m.quoted ? m.quoted : m;
+        let mime = (q.msg || q).mimetype || '';
+        if (!/image|video/.test(mime)) return m.reply('Reply to an image or video.');
+
         const stream = await downloadContentFromMessage(q.msg || q, mime.split('/')[0]);
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
         let stickerResult = new Sticker(buffer, {
-            pack: packname, // Default bot pack
-            author: author,   // Default bot author
+            pack: packname, // From your set.js
+            author: author,   // From your set.js
             type: StickerTypes.FULL,
             quality: 70
         });
         await client.sendMessage(m.chat, { sticker: await stickerResult.toBuffer() }, { quoted: m });
     } catch (err) {
         logError('STICKER', err);
+        m.reply("Error creating sticker.");
     }
 }
 break;
-
 //========================================================================================================================//                  
            case "dp": {
   let ha;
@@ -5683,12 +5684,13 @@ case 'vv':
 case 'viewonce': {
     try {
         if (!m.quoted) return m.reply("Please reply to a view-once message.");
-        const { normalizeMessageContent } = require('@whiskeysockets/baileys');
-        const quotedMsg = normalizeMessageContent(m.quoted.message);
-        const type = Object.keys(quotedMsg)[0];
-        const media = quotedMsg[type];
+        
+        // Target the actual message content inside the view-once wrapper
+        const viewOnceMsg = m.quoted.message?.viewOnceMessageV2?.message || m.quoted.message?.viewOnceMessage?.message || m.quoted.message;
+        const type = Object.keys(viewOnceMsg || {})[0];
+        const media = viewOnceMsg[type];
 
-        if (!media || !media.viewOnce) return m.reply("This is not a view-once message.");
+        if (!media || !(/image|video/.test(type))) return m.reply("This is not a valid view-once media.");
 
         const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
         let buffer = Buffer.from([]);
@@ -5696,39 +5698,41 @@ case 'viewonce': {
 
         if (/image/.test(type)) {
             await client.sendMessage(m.chat, { image: buffer, caption: "Retrieved View-Once" }, { quoted: m });
-        } else if (/video/.test(type)) {
+        } else {
             await client.sendMessage(m.chat, { video: buffer, caption: "Retrieved View-Once" }, { quoted: m });
         }
     } catch (err) {
         logError('VV', err);
-        m.reply("Failed to retrieve. Media may have expired.");
+        m.reply("Failed to retrieve. Media may have expired or is incompatible.");
     }
 }
 break;
-
 //========================================================================================================================//                  
-          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+         case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
     try {
         if (!m.quoted) return m.reply("Please reply to a media message.");
-        const { normalizeMessageContent } = require('@whiskeysockets/baileys');
-        const quotedMsg = normalizeMessageContent(m.quoted.message);
-        const type = Object.keys(quotedMsg)[0];
+        
+        const quotedMsg = m.quoted.message?.ephemeralMessage?.message || m.quoted.message;
+        const type = Object.keys(quotedMsg || {})[0];
         const media = quotedMsg[type];
+
+        if (!media) return m.reply("Unsupported media.");
 
         const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
-        const botId = client.user.id.split(':')[0] + "@s.whatsapp.net";
+        // Use normalized JID to ensure it lands in your main DM
+        const botId = client.decodeJid(client.user.id);
         await client.sendMessage(botId, { 
             [type.replace('Message', '')]: buffer, 
-            caption: `✨ *KING M DM Send* ✨\n\nFrom: @${m.sender.split('@')[0]}`,
+            caption: `✨ *KING M DM Send* ✨\nFrom: @${m.sender.split('@')[0]}`,
             mentions: [m.sender]
         });
-        m.reply("✅");
+        m.reply("✅ Sent to your DM.");
     } catch (err) {
         logError('VV2', err);
-        m.reply("Failed.");
+        m.reply("Failed to send to DM.");
     }
 }
 break;
@@ -5737,21 +5741,23 @@ break;
    case 'take': {
     const { Sticker, StickerTypes } = require('wa-sticker-formatter');
     try {
-        if (!m.quoted || m.quoted.mtype !== 'stickerMessage') return m.reply('Please reply to a sticker to "take" it.');
+        if (!m.quoted || m.quoted.mtype !== 'stickerMessage') return m.reply('Please reply to a sticker.');
         
+        // Correctly target the sticker message content for your library
         const stream = await downloadContentFromMessage(m.quoted.message.stickerMessage, 'sticker');
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
         let stickerResult = new Sticker(buffer, {
-            pack: pushname, // Sets the pack name to YOUR name
-            author: pushname, // Sets the author name to YOUR name
+            pack: pushname, // Stolen name
+            author: pushname, 
             type: StickerTypes.FULL,
             quality: 70
         });
         await client.sendMessage(m.chat, { sticker: await stickerResult.toBuffer() }, { quoted: m });
     } catch (err) {
         logError('TAKE', err);
+        m.reply("Failed to take sticker.");
     }
 }
 break;
