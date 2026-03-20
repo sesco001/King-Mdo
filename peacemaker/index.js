@@ -7,6 +7,7 @@ const {
   jidDecode,
   proto,
   getContentType,
+  jidNormalizedUser // Added this as required by your logic
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
@@ -44,54 +45,6 @@ authenticationn();
 
 const processedEdits = new Set();
 const reactedStatuses = new Set();
-const statusQueue = [];
-let isProcessing = false;
-
-// ==================== STATUS REACTION SYSTEM ====================
-async function processStatusQueue() {
-    if (isProcessing || statusQueue.length === 0) return;
-    isProcessing = true;
-    
-    while (statusQueue.length > 0) {
-        const { client, mek } = statusQueue.shift();
-        
-        try {
-            const statusId = mek.key.id;
-            if (reactedStatuses.has(statusId)) continue;
-            
-            // Correctly decode the participant JID
-            const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
-            const botJid = client.decodeJid(client.user.id);
-            
-            if (senderJid === botJid) continue;
-            
-            const emojis = ['🗿', '⌚️', '💠', '✨', '❤️', '🔥', '💯', '🌟', '✅', '👑', '🎈', '🪄', '🧿', '💎'];
-            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            
-            reactedStatuses.add(statusId);
-            
-            try {
-                // FIXED: statusJidList is MANDATORY for reactions to show up for others
-                await client.sendMessage('status@broadcast', {
-                    react: {
-                        text: randomEmoji,
-                        key: mek.key
-                    }
-                }, {
-                    statusJidList: [senderJid, botJid]
-                });
-                console.log(chalk.green(`✅ Reacted to ${senderJid.split('@')[0]} with ${randomEmoji}`));
-            } catch (err) {
-                console.log(chalk.red(`❌ Reaction failed: ${err.message}`));
-            }
-            
-            await sleep(3000);
-        } catch (err) {
-            console.error('❌ Queue error:', err.message);
-        }
-    }
-    isProcessing = false;
-}
 
 async function startPeace() { 
   let autobio, autolike, autoview, mode, prefix, anticall, antiedit;
@@ -143,33 +96,58 @@ async function startPeace() {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       
-      if (mek.message.ephemeralMessage) {
-        mek.message = mek.message.ephemeralMessage.message;
-      }
+      const ms = mek; // Alias to match your logic
+      const clienttech = jidNormalizedUser(client.user.id);
+      const fromJid = ms.key.participant || ms.key.remoteJid;
 
-      // ========== AUTO VIEW & REACT STATUS (FIXED) ==========
-      if (mek.key && mek.key.remoteJid === "status@broadcast") {
-        const senderJid = client.decodeJid(mek.key.participant || mek.key.remoteJid);
-        
-        // AUTO-VIEW FIX: Must include the 'participant' field in the receipt
-        if (autoview === 'on') {
-            await client.readMessages([{
-              remoteJid: 'status@broadcast',
-              id: mek.key.id,
-              participant: senderJid
-            }]);
-            console.log(chalk.cyan(`👁️ Viewed status from ${senderJid.split('@')[0]}`));
-        }
-        
-        if (autolike === 'on' && !mek.key.fromMe) {
-          if (!reactedStatuses.has(mek.key.id)) {
-            statusQueue.push({ client, mek });
-            if (!isProcessing) processStatusQueue();
+      ms.message = getContentType(ms.message) === 'ephemeralMessage'
+        ? ms.message.ephemeralMessage.message
+        : ms.message;
+
+      // ========== AUTO VIEW & LIKE STATUS (YOUR EXACT LOGIC) ==========
+      if (ms.key.remoteJid === "status@broadcast") {
+        try {
+          // Auto View Status
+          if (autoview === "on") {
+            const participantToUse = ms.key.participantPn || ms.key.participant;
+            const readKey = {
+              remoteJid: ms.key.remoteJid,
+              id: ms.key.id,
+              fromMe: ms.key.fromMe,
+              participant: participantToUse
+            };
+            
+            await client.readMessages([readKey]);
+            console.log(chalk.cyan(`👁️ Viewed: ${participantToUse}`));
           }
+
+          // Auto Like Status
+          if (autolike === "on" && ms.key.participant && !ms.key.fromMe) {
+            const participantToUse = ms.key.participantPn || ms.key.participant;
+            const reactionKey = {
+              remoteJid: ms.key.remoteJid,
+              id: ms.key.id,
+              fromMe: ms.key.fromMe,
+              participant: participantToUse
+            };
+            
+            const emojis = ['🗿', '⌚️', '💠', '✨', '❤️', '🔥', '💯', '🌟', '✅'];
+            const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+            
+            await client.sendMessage(
+              ms.key.remoteJid,
+              { react: { key: reactionKey, text: randomEmoji } },
+              { statusJidList: [participantToUse, clienttech] }
+            );
+            console.log(chalk.green(`✅ Liked: ${participantToUse}`));
+          }
+          return; // Stop here for statuses
+        } catch (error) {
+          console.error("Error handling status broadcast:", error);
         }
-        return; 
       }
       
+      // Mode Check for Commands
       const isMe = mek.key.fromMe;
       if (mode === 'private' && !isMe) return;
       
@@ -182,6 +160,7 @@ async function startPeace() {
     }
   });
 
+  // ========== ANTI-EDIT & ANTI-CALL (MAINTAINED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
@@ -204,10 +183,7 @@ async function startPeace() {
           return type === 'conversation' ? msg[type] : `[${type}]`;
         };
 
-        const notificationMessage = `*⚠️ ANTI-EDIT RESTORED ⚠️*\n\n` +
-                                 `👤 *Sender:* @${sender.split('@')[0]}\n` +
-                                 `📄 *Original:* ${getContent(originalMsg?.message)}\n` +
-                                 `✏️ *Edited:* ${getContent(editedMsg)}`;
+        const notificationMessage = `*⚠️ ANTI-EDIT RESTORED ⚠️*\n👤 *Sender:* @${sender.split('@')[0]}\n📄 *Original:* ${getContent(originalMsg?.message)}\n✏️ *Edited:* ${getContent(editedMsg)}`;
 
         const sendTo = currentAntiedit === 'private' ? client.user.id : key.remoteJid;
         await client.sendMessage(sendTo, { text: notificationMessage, mentions: [sender] }).catch(() => {});
@@ -242,28 +218,7 @@ async function startPeace() {
     } else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-      const Texxt = `🔶 *KING M ꜱᴛᴀᴛᴜꜱ*\n` +
-              `───────────────────────\n` +
-              `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
-              `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
-              `⏰  ᴛɪᴍᴇ » ${new Date().toLocaleTimeString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                hour: '2-digit', 
-                minute: '2-digit', 
-                hour12: false 
-              })} | ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                month: '2-digit',
-                day: '2-digit',
-                year: 'numeric'
-              })}\n` +
-              `📅  ᴅᴀʏ » ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                weekday: 'long' 
-              })}\n` +
-              `───────────────────────\n` +
-              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
-      client.sendMessage(client.user.id, { text: Texxt }).catch(() => {});
+      client.sendMessage(client.user.id, { text: `🔶 *KING M STATUS*\n✅ CONNECTED\n⚙️ MODE: ${mode}` }).catch(() => {});
     }
   });
 
