@@ -5695,36 +5695,78 @@ break;
 
 //========================================================================================================================//                  
 case 'vv':
+case 'wow':
+case 'retrieve':
 case 'viewonce': {
-    try {
-        if (!m.quoted) return m.reply("Please reply to a view-once message.");
+  if (!m.quoted) return reply("📌 Reply to a media message to retrieve it.");
 
-        // FIX: Added safe navigation (?.) and fallback empty object ({}) 
-        // to prevent the "reading 'viewOnceMessageV2' of undefined" crash
-        const viewOnceMsg = m.quoted.message?.viewOnceMessageV2?.message || 
-                            m.quoted.message?.viewOnceMessage?.message || 
-                            m.quoted.message;
+  try {
+    const quoted = m.quoted;
+    const from = m.chat;
 
-        // Verify if it's actually a media type before continuing
-        const type = Object.keys(viewOnceMsg || {})[0];
-        if (!type || !(/image|video/.test(type))) {
-            return m.reply("This is not a valid view-once media.");
-        }
-
-        const media = viewOnceMsg[type];
-        const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
-
-        if (/image/.test(type)) {
-            await client.sendMessage(m.chat, { image: buffer, caption: "Retrieved" }, { quoted: m });
-        } else {
-            await client.sendMessage(m.chat, { video: buffer, caption: "Retrieved" }, { quoted: m });
-        }
-    } catch (err) {
-        logError('VV', err);
-        m.reply("Failed to retrieve. The media might have expired or you are not replying to a View-Once message.");
+    // 1. Handle normal media
+    if (quoted?.imageMessage) {
+      const caption = quoted.imageMessage.caption || "";
+      const filePath = await client.downloadAndSaveMediaMessage(quoted.imageMessage);
+      await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: m });
     }
+
+    if (quoted?.videoMessage) {
+      const caption = quoted.videoMessage.caption || "";
+      const filePath = await client.downloadAndSaveMediaMessage(quoted.videoMessage);
+      await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: m });
+    }
+
+    if (quoted?.audioMessage) {
+      const filePath = await client.downloadAndSaveMediaMessage(quoted.audioMessage);
+      await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: m });
+    }
+
+    // 2. Handle view-once media
+    let viewOnceContent, mediaType;
+    if (
+      quoted.imageMessage?.viewOnce ||
+      quoted.videoMessage?.viewOnce ||
+      quoted.audioMessage?.viewOnce
+    ) {
+      mediaType = Object.keys(quoted).find(
+        (key) =>
+          key.endsWith("Message") &&
+          ["image", "video", "audio"].some((t) => key.includes(t))
+      );
+      viewOnceContent = { [mediaType]: quoted[mediaType] };
+    } else if (quoted.viewOnceMessage) {
+      viewOnceContent = quoted.viewOnceMessage.message;
+      mediaType = Object.keys(viewOnceContent).find(
+        (key) =>
+          key.endsWith("Message") &&
+          ["image", "video", "audio"].some((t) => key.includes(t))
+      );
+    }
+
+    if (viewOnceContent && mediaType) {
+      const mediaMessage = {
+        ...viewOnceContent[mediaType],
+        viewOnce: false, 
+      };
+
+      const filePath = await client.downloadAndSaveMediaMessage(mediaMessage);
+
+      if (mediaType === "imageMessage") {
+        const caption = mediaMessage.caption || "";
+        await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: m });
+      } else if (mediaType === "videoMessage") {
+        const caption = mediaMessage.caption || "";
+        await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: m });
+      } else if (mediaType === "audioMessage") {
+        await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: m });
+      }
+    }
+
+  } catch (err) {
+    logError('VV', err);
+    reply("❌ Failed to retrieve media. Try again.");
+  }
 }
 break;
 //========================================================================================================================//                  
