@@ -5698,22 +5698,29 @@ case 'vv':
 case 'wow':
 case 'retrieve':
 case 'viewonce': {
-  if (!m.quoted) return reply("📌 Reply to a view-once message.");
+  if (!m.quoted) return reply("📌 Reply to a media message to retrieve it.");
 
   try {
-    // 1. Extract the actual message content from the view-once wrapper
-    const quotedMsg = m.quoted.message?.viewOnceMessageV2?.message || 
-                      m.quoted.message?.viewOnceMessage?.message || 
-                      m.quoted.message;
-    
-    const type = Object.keys(quotedMsg || {})[0];
-    const media = quotedMsg[type];
+    // 1. UNIVERSAL WRAPPER STRIPPER
+    // This finds the real message content inside any wrapper (V1, V2, or Ephemeral)
+    const getRealMsg = (msg) => {
+        if (msg?.viewOnceMessageV2?.message) return msg.viewOnceMessageV2.message;
+        if (msg?.viewOnceMessage?.message) return msg.viewOnceMessage.message;
+        if (msg?.ephemeralMessage?.message) return msg.ephemeralMessage.message;
+        return msg;
+    };
 
-    if (!media || !(/image|video|audio/.test(type))) {
-      return reply("❌ This is not a valid view-once media.");
+    const realMsg = getRealMsg(m.quoted.message);
+    const type = Object.keys(realMsg || {})[0];
+    
+    // 2. Validation
+    if (!realMsg || !type || !(/image|video|audio/.test(type))) {
+      return reply("❌ Could not find valid media in this message.");
     }
 
-    // 2. Download via stream (Native standard)
+    const media = realMsg[type];
+
+    // 3. NATIVE DOWNLOAD
     const stream = await downloadContentFromMessage(
       media,
       type.replace('Message', '')
@@ -5724,9 +5731,9 @@ case 'viewonce': {
       buffer = Buffer.concat([buffer, chunk]);
     }
 
-    const caption = media.caption || "✨ *KING M Media Retrieve* ✨";
+    const caption = media.caption || "✨ *Retrieved by KING M* ✨";
 
-    // 3. Send the media back to the current chat
+    // 4. DELIVERY
     if (/image/.test(type)) {
       await client.sendMessage(m.chat, { image: buffer, caption }, { quoted: m });
     } else if (/video/.test(type)) {
@@ -5736,8 +5743,8 @@ case 'viewonce': {
     }
 
   } catch (err) {
-    logError('VV', err);
-    reply("❌ Failed to retrieve. Media may have expired or library mismatch.");
+    logError('VV_FIX', err);
+    reply("❌ Failed to retrieve. The media has likely expired from WhatsApp servers.");
   }
 }
 break;
