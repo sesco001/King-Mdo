@@ -5616,24 +5616,38 @@ case "s":
 case "sticker": {
     const { Sticker, StickerTypes } = require('wa-sticker-formatter');
     try {
+        // 1. Identify the media source (quoted message or current message)
         let q = m.quoted ? m.quoted : m;
         let mime = (q.msg || q).mimetype || '';
-        if (!/image|video/.test(mime)) return m.reply('Reply to an image or video.');
 
+        // 2. Check if the media is a supported type (image or video)
+        if (!/image|video/.test(mime)) {
+            return m.reply('Please reply to an image or a short video to make a sticker.');
+        }
+
+        // 3. Download the media stream using your specific library's method
         const stream = await downloadContentFromMessage(q.msg || q, mime.split('/')[0]);
+        
+        // 4. Convert the stream into a Buffer
         let buffer = Buffer.from([]);
-        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
+        // 5. Create the sticker with your bot's default metadata
         let stickerResult = new Sticker(buffer, {
-            pack: packname, // From your set.js
-            author: author,   // From your set.js
+            pack: packname, // Defined in your set.js
+            author: author,   // Defined in your set.js
             type: StickerTypes.FULL,
             quality: 70
         });
+
+        // 6. Send the finished sticker
         await client.sendMessage(m.chat, { sticker: await stickerResult.toBuffer() }, { quoted: m });
+
     } catch (err) {
         logError('STICKER', err);
-        m.reply("Error creating sticker.");
+        m.reply("Error: Could not create sticker. Ensure the media is valid.");
     }
 }
 break;
@@ -5684,26 +5698,32 @@ case 'vv':
 case 'viewonce': {
     try {
         if (!m.quoted) return m.reply("Please reply to a view-once message.");
-        
-        // Target the actual message content inside the view-once wrapper
-        const viewOnceMsg = m.quoted.message?.viewOnceMessageV2?.message || m.quoted.message?.viewOnceMessage?.message || m.quoted.message;
+
+        // FIX: Added safe navigation (?.) and fallback empty object ({}) 
+        // to prevent the "reading 'viewOnceMessageV2' of undefined" crash
+        const viewOnceMsg = m.quoted.message?.viewOnceMessageV2?.message || 
+                            m.quoted.message?.viewOnceMessage?.message || 
+                            m.quoted.message;
+
+        // Verify if it's actually a media type before continuing
         const type = Object.keys(viewOnceMsg || {})[0];
+        if (!type || !(/image|video/.test(type))) {
+            return m.reply("This is not a valid view-once media.");
+        }
+
         const media = viewOnceMsg[type];
-
-        if (!media || !(/image|video/.test(type))) return m.reply("This is not a valid view-once media.");
-
         const stream = await downloadContentFromMessage(media, type.replace('Message', ''));
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
         if (/image/.test(type)) {
-            await client.sendMessage(m.chat, { image: buffer, caption: "Retrieved View-Once" }, { quoted: m });
+            await client.sendMessage(m.chat, { image: buffer, caption: "Retrieved" }, { quoted: m });
         } else {
-            await client.sendMessage(m.chat, { video: buffer, caption: "Retrieved View-Once" }, { quoted: m });
+            await client.sendMessage(m.chat, { video: buffer, caption: "Retrieved" }, { quoted: m });
         }
     } catch (err) {
         logError('VV', err);
-        m.reply("Failed to retrieve. Media may have expired or is incompatible.");
+        m.reply("Failed to retrieve. The media might have expired or you are not replying to a View-Once message.");
     }
 }
 break;
