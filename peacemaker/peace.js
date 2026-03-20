@@ -5698,74 +5698,46 @@ case 'vv':
 case 'wow':
 case 'retrieve':
 case 'viewonce': {
-  if (!m.quoted) return reply("📌 Reply to a media message to retrieve it.");
+  if (!m.quoted) return reply("📌 Reply to a view-once message.");
 
   try {
-    const quoted = m.quoted;
-    const from = m.chat;
+    // 1. Extract the actual message content from the view-once wrapper
+    const quotedMsg = m.quoted.message?.viewOnceMessageV2?.message || 
+                      m.quoted.message?.viewOnceMessage?.message || 
+                      m.quoted.message;
+    
+    const type = Object.keys(quotedMsg || {})[0];
+    const media = quotedMsg[type];
 
-    // 1. Handle normal media
-    if (quoted?.imageMessage) {
-      const caption = quoted.imageMessage.caption || "";
-      const filePath = await client.downloadAndSaveMediaMessage(quoted.imageMessage);
-      await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: m });
+    if (!media || !(/image|video|audio/.test(type))) {
+      return reply("❌ This is not a valid view-once media.");
     }
 
-    if (quoted?.videoMessage) {
-      const caption = quoted.videoMessage.caption || "";
-      const filePath = await client.downloadAndSaveMediaMessage(quoted.videoMessage);
-      await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: m });
+    // 2. Download via stream (Native standard)
+    const stream = await downloadContentFromMessage(
+      media,
+      type.replace('Message', '')
+    );
+
+    let buffer = Buffer.from([]);
+    for await (const chunk of stream) {
+      buffer = Buffer.concat([buffer, chunk]);
     }
 
-    if (quoted?.audioMessage) {
-      const filePath = await client.downloadAndSaveMediaMessage(quoted.audioMessage);
-      await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: m });
-    }
+    const caption = media.caption || "✨ *KING M Media Retrieve* ✨";
 
-    // 2. Handle view-once media
-    let viewOnceContent, mediaType;
-    if (
-      quoted.imageMessage?.viewOnce ||
-      quoted.videoMessage?.viewOnce ||
-      quoted.audioMessage?.viewOnce
-    ) {
-      mediaType = Object.keys(quoted).find(
-        (key) =>
-          key.endsWith("Message") &&
-          ["image", "video", "audio"].some((t) => key.includes(t))
-      );
-      viewOnceContent = { [mediaType]: quoted[mediaType] };
-    } else if (quoted.viewOnceMessage) {
-      viewOnceContent = quoted.viewOnceMessage.message;
-      mediaType = Object.keys(viewOnceContent).find(
-        (key) =>
-          key.endsWith("Message") &&
-          ["image", "video", "audio"].some((t) => key.includes(t))
-      );
-    }
-
-    if (viewOnceContent && mediaType) {
-      const mediaMessage = {
-        ...viewOnceContent[mediaType],
-        viewOnce: false, 
-      };
-
-      const filePath = await client.downloadAndSaveMediaMessage(mediaMessage);
-
-      if (mediaType === "imageMessage") {
-        const caption = mediaMessage.caption || "";
-        await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: m });
-      } else if (mediaType === "videoMessage") {
-        const caption = mediaMessage.caption || "";
-        await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: m });
-      } else if (mediaType === "audioMessage") {
-        await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: m });
-      }
+    // 3. Send the media back to the current chat
+    if (/image/.test(type)) {
+      await client.sendMessage(m.chat, { image: buffer, caption }, { quoted: m });
+    } else if (/video/.test(type)) {
+      await client.sendMessage(m.chat, { video: buffer, caption }, { quoted: m });
+    } else if (/audio/.test(type)) {
+      await client.sendMessage(m.chat, { audio: buffer, mimetype: 'audio/mpeg' }, { quoted: m });
     }
 
   } catch (err) {
     logError('VV', err);
-    reply("❌ Failed to retrieve media. Try again.");
+    reply("❌ Failed to retrieve. Media may have expired or library mismatch.");
   }
 }
 break;
