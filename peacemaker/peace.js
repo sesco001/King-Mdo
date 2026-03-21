@@ -5694,42 +5694,68 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
-case "vv":
-case "retrieve": {
-  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video.");
+case 'vv':
+case 'wow':
+case 'retrieve': {
+    if (!quotedMsg) return reply("📌 Reply to a media message to retrieve it.");
 
-  let quoted = m.quoted;
-  let msg = quoted.message?.viewOnceMessage?.message || quoted.message;
+    try {
+        // 1. Handle standard media messages
+        if (quoted?.imageMessage) {
+            const caption = quoted.imageMessage.caption || "";
+            const filePath = await client.downloadAndSaveMediaMessage(quoted.imageMessage);
+            await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: mek });
+        } 
+        
+        else if (quoted?.videoMessage) {
+            const caption = quoted.videoMessage.caption || "";
+            const filePath = await client.downloadAndSaveMediaMessage(quoted.videoMessage);
+            await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: mek });
+        } 
+        
+        else if (quoted?.audioMessage) {
+            const filePath = await client.downloadAndSaveMediaMessage(quoted.audioMessage);
+            await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: mek });
+        }
 
-  if (!msg) return m.reply("❌ No media found.");
+        // 2. Handle View-Once media (Special logic)
+        let viewOnceContent, mediaType;
+        
+        // Check if the quoted message itself is marked as view-once
+        if (quoted.imageMessage?.viewOnce || quoted.videoMessage?.viewOnce || quoted.audioMessage?.viewOnce) {
+            mediaType = Object.keys(quoted).find(key => 
+                key.endsWith("Message") && ["image", "video", "audio"].some(t => key.includes(t))
+            );
+            viewOnceContent = { [mediaType]: quoted[mediaType] };
+        } 
+        // Check if it's wrapped in a viewOnceMessage object
+        else if (quoted.viewOnceMessage) {
+            viewOnceContent = quoted.viewOnceMessage.message;
+            mediaType = Object.keys(viewOnceContent).find(key => 
+                key.endsWith("Message") && ["image", "video", "audio"].some(t => key.includes(t))
+            );
+        }
 
-  // IMAGE
-  if (msg.imageMessage) {
-    let caption = msg.imageMessage.caption || "No Caption";
+        if (viewOnceContent && mediaType) {
+            const mediaData = viewOnceContent[mediaType];
+            // Remove the viewOnce flag so the downloader can process it
+            const mediaMessage = { ...mediaData, viewOnce: false };
+            const filePath = await client.downloadAndSaveMediaMessage(mediaMessage);
 
-    let buffer = await client.downloadMediaMessage(quoted);
-
-    await client.sendMessage(m.chat, {
-      image: buffer,
-      caption: `✨ *Peace Core is alive!* ✨\n\n${caption}`
-    }, { quoted: m });
-  }
-
-  // VIDEO
-  else if (msg.videoMessage) {
-    let caption = msg.videoMessage.caption || "No Caption";
-
-    let buffer = await client.downloadMediaMessage(quoted);
-
-    await client.sendMessage(m.chat, {
-      video: buffer,
-      caption: `✨ *Peace Core is alive!* ✨\n\n${caption}`
-    }, { quoted: m });
-  }
-
-  else {
-    m.reply("❌ Unsupported media type.");
-  }
+            if (mediaType === "imageMessage") {
+                const caption = mediaData.caption || "";
+                await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: mek });
+            } else if (mediaType === "videoMessage") {
+                const caption = mediaData.caption || "";
+                await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: mek });
+            } else if (mediaType === "audioMessage") {
+                await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: mek });
+            }
+        }
+    } catch (err) {
+        console.error("Error in vv command:", err);
+        reply("❌ Failed to retrieve media. The message might be too old or expired.");
+    }
 }
 break;
 //========================================================================================================================//                  
