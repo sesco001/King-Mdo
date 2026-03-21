@@ -5695,57 +5695,54 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
+//========================================================================================================================// 
 case "vv":
 case "retrieve": {
-  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video.");
+    // 1. Validate if there is a quoted message
+    if (!m.quoted) return reply("⚠️ Quote a *View Once* image or video.");
 
-  let quotedMsg = m.quoted;
-  
-  // Get the actual message content from the quoted message
-  let msg = quotedMsg.message || quotedMsg;
-  
-  // Handle different View Once message structures
-  let viewOnceMsg = 
-    msg.viewOnceMessageV2?.message ||
-    msg.viewOnceMessageV2Extension?.message ||
-    msg.viewOnceMessage?.message ||
-    msg;
+    try {
+        // 2. Identify the message structure (Supporting standard and View-Once)
+        const msg = m.quoted.message || m.quoted;
+        
+        // This targets View-Once versions V1, V2, and Extensions
+        const viewOnceMsg = 
+            msg.viewOnceMessageV2?.message || 
+            msg.viewOnceMessageV2Extension?.message || 
+            msg.viewOnceMessage?.message || 
+            msg;
 
-  // Check if it's a view once message by looking for the viewOnceMessage property
-  if (!msg.viewOnceMessageV2 && !msg.viewOnceMessageV2Extension && !msg.viewOnceMessage) {
-    return m.reply("❌ This is not a View Once message.");
-  }
+        // 3. Detect Media Type
+        const isImage = viewOnceMsg.imageMessage;
+        const isVideo = viewOnceMsg.videoMessage;
 
-  // Check for media in the view once message
-  let mediaMsg = viewOnceMsg.imageMessage || viewOnceMsg.videoMessage;
-  
-  if (!mediaMsg) {
-    return m.reply("❌ No media found in View Once message.");
-  }
+        if (!isImage && !isVideo) {
+            return reply("❌ No media found. Please quote a View-Once image or video.");
+        }
 
-  try {
-    // Download the media
-    let buffer = await client.downloadMediaMessage(quotedMsg);
-    
-    // Send based on media type
-    if (viewOnceMsg.imageMessage) {
-      await client.sendMessage(m.chat, {
-        image: buffer,
-        caption: `✨ *Peace Core is alive!* ✨\n\n${viewOnceMsg.imageMessage.caption || "No Caption"}`
-      }, { quoted: m });
-    } 
-    else if (viewOnceMsg.videoMessage) {
-      await client.sendMessage(m.chat, {
-        video: buffer,
-        caption: `✨ *King Core is alive!* ✨\n\n${viewOnceMsg.videoMessage.caption || "No Caption"}`
-      }, { quoted: m });
+        // 4. Download and Send
+        // React to show processing
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+
+        const buffer = await client.downloadMediaMessage(m.quoted);
+        const caption = `✨ *KING M RETRIEVER* ✨\n\n_Original Caption:_ ${ (isImage ? isImage.caption : isVideo.caption) || "None"}`;
+
+        if (isImage) {
+            await client.sendMessage(m.chat, { image: buffer, caption }, { quoted: m });
+        } else {
+            await client.sendMessage(m.chat, { video: buffer, caption }, { quoted: m });
+        }
+
+        // Success Reaction
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        logError('RETRIEVE', error);
+        reply("❌ Failed to retrieve media. It may have expired or been deleted from servers.");
     }
-  } catch (error) {
-    console.error("Error downloading view once message:", error);
-    m.reply("❌ Failed to retrieve the View Once media. Error: " + error.message);
-  }
 }
 break;
+//========================================================================================================================//
 //========================================================================================================================//                  
          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
     try {
