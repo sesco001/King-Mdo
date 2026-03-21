@@ -13,6 +13,8 @@ const yts = require("yt-search");
 let lastTextTime = 0;
 const messageDelay = 3000;
 // Add these helper functions at the top of peacemaker/peace.js
+const quoted = mek.msg.contextInfo ? mek.msg.contextInfo.quotedMessage : null;
+const quotedMsg = mek.msg.contextInfo ? mek.msg.contextInfo.participant : null;
 // Updated logError in peacemaker/peace.js
 const logError = (command, err) => {
     // Safely extract the message or provide a fallback string
