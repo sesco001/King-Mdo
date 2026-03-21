@@ -5694,57 +5694,44 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
-case 'vv':
-case 'viewonce':
-case 'retrive': {
-    // Check if there is a quoted message
-    const quoted = m.quoted ? m.quoted : m;
-    const mime = (quoted.msg || quoted).mimetype || '';
-    
-    // Ensure the quoted message is a view-once type
-    if (!/viewOnce/.test(quoted.mtype)) {
-        return reply('Reply to a view-once image or video.');
-    }
+case "vv":
+case "retrieve": {
+  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video.");
 
-    try {
-        // Download the media content using Baileys' internal utility
-        const downloadBuffer = async (msg, type) => {
-            const stream = await downloadContentFromMessage(msg, type);
-            let buffer = Buffer.from([]);
-            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-            return buffer;
-        };
+  let quoted = m.quoted;
+  let msg = quoted.message?.viewOnceMessage?.message || quoted.message;
 
-        let buffer;
-        let type;
+  if (!msg) return m.reply("❌ No media found.");
 
-        // Determine media type and download
-        if (/image/.test(mime)) {
-            type = 'image';
-            buffer = await downloadBuffer(quoted.msg, 'image');
-        } else if (/video/.test(mime)) {
-            type = 'video';
-            buffer = await downloadBuffer(quoted.msg, 'video');
-        } else if (/audio/.test(mime)) {
-            type = 'audio';
-            buffer = await downloadBuffer(quoted.msg, 'audio');
-        }
+  // IMAGE
+  if (msg.imageMessage) {
+    let caption = msg.imageMessage.caption || "No Caption";
 
-        // Send the retrieved media back to the chat
-        if (buffer) {
-            await sock.sendMessage(m.chat, {
-                [type]: buffer,
-                caption: quoted.msg.caption || `Retrieved ${type}`,
-                mimetype: quoted.msg.mimetype
-            }, { quoted: m });
-        }
-    } catch (e) {
-        console.error(e);
-        reply('Error: Could not retrieve the view-once media.');
-    }
+    let buffer = await client.downloadMediaMessage(quoted);
+
+    await client.sendMessage(m.chat, {
+      image: buffer,
+      caption: `✨ *Peace Core is alive!* ✨\n\n${caption}`
+    }, { quoted: m });
+  }
+
+  // VIDEO
+  else if (msg.videoMessage) {
+    let caption = msg.videoMessage.caption || "No Caption";
+
+    let buffer = await client.downloadMediaMessage(quoted);
+
+    await client.sendMessage(m.chat, {
+      video: buffer,
+      caption: `✨ *Peace Core is alive!* ✨\n\n${caption}`
+    }, { quoted: m });
+  }
+
+  else {
+    m.reply("❌ Unsupported media type.");
+  }
 }
 break;
-
 //========================================================================================================================//                  
          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
     try {
