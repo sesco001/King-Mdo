@@ -13,8 +13,7 @@ const yts = require("yt-search");
 let lastTextTime = 0;
 const messageDelay = 3000;
 // Add these helper functions at the top of peacemaker/peace.js
-const quoted = mek.msg.contextInfo ? mek.msg.contextInfo.quotedMessage : null;
-const quotedMsg = mek.msg.contextInfo ? mek.msg.contextInfo.participant : null;
+
 // Updated logError in peacemaker/peace.js
 const logError = (command, err) => {
     // Safely extract the message or provide a fallback string
@@ -5696,68 +5695,55 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
-case 'vv':
-case 'wow':
-case 'retrieve': {
-    if (!quotedMsg) return reply("📌 Reply to a media message to retrieve it.");
+case "vv":
+case "retrieve": {
+  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video.");
 
-    try {
-        // 1. Handle standard media messages
-        if (quoted?.imageMessage) {
-            const caption = quoted.imageMessage.caption || "";
-            const filePath = await client.downloadAndSaveMediaMessage(quoted.imageMessage);
-            await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: mek });
-        } 
-        
-        else if (quoted?.videoMessage) {
-            const caption = quoted.videoMessage.caption || "";
-            const filePath = await client.downloadAndSaveMediaMessage(quoted.videoMessage);
-            await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: mek });
-        } 
-        
-        else if (quoted?.audioMessage) {
-            const filePath = await client.downloadAndSaveMediaMessage(quoted.audioMessage);
-            await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: mek });
-        }
+  let quotedMsg = m.quoted;
+  
+  // Get the actual message content from the quoted message
+  let msg = quotedMsg.message || quotedMsg;
+  
+  // Handle different View Once message structures
+  let viewOnceMsg = 
+    msg.viewOnceMessageV2?.message ||
+    msg.viewOnceMessageV2Extension?.message ||
+    msg.viewOnceMessage?.message ||
+    msg;
 
-        // 2. Handle View-Once media (Special logic)
-        let viewOnceContent, mediaType;
-        
-        // Check if the quoted message itself is marked as view-once
-        if (quoted.imageMessage?.viewOnce || quoted.videoMessage?.viewOnce || quoted.audioMessage?.viewOnce) {
-            mediaType = Object.keys(quoted).find(key => 
-                key.endsWith("Message") && ["image", "video", "audio"].some(t => key.includes(t))
-            );
-            viewOnceContent = { [mediaType]: quoted[mediaType] };
-        } 
-        // Check if it's wrapped in a viewOnceMessage object
-        else if (quoted.viewOnceMessage) {
-            viewOnceContent = quoted.viewOnceMessage.message;
-            mediaType = Object.keys(viewOnceContent).find(key => 
-                key.endsWith("Message") && ["image", "video", "audio"].some(t => key.includes(t))
-            );
-        }
+  // Check if it's a view once message by looking for the viewOnceMessage property
+  if (!msg.viewOnceMessageV2 && !msg.viewOnceMessageV2Extension && !msg.viewOnceMessage) {
+    return m.reply("❌ This is not a View Once message.");
+  }
 
-        if (viewOnceContent && mediaType) {
-            const mediaData = viewOnceContent[mediaType];
-            // Remove the viewOnce flag so the downloader can process it
-            const mediaMessage = { ...mediaData, viewOnce: false };
-            const filePath = await client.downloadAndSaveMediaMessage(mediaMessage);
+  // Check for media in the view once message
+  let mediaMsg = viewOnceMsg.imageMessage || viewOnceMsg.videoMessage;
+  
+  if (!mediaMsg) {
+    return m.reply("❌ No media found in View Once message.");
+  }
 
-            if (mediaType === "imageMessage") {
-                const caption = mediaData.caption || "";
-                await client.sendMessage(from, { image: { url: filePath }, caption }, { quoted: mek });
-            } else if (mediaType === "videoMessage") {
-                const caption = mediaData.caption || "";
-                await client.sendMessage(from, { video: { url: filePath }, caption }, { quoted: mek });
-            } else if (mediaType === "audioMessage") {
-                await client.sendMessage(from, { audio: { url: filePath }, mimetype: 'audio/mpeg' }, { quoted: mek });
-            }
-        }
-    } catch (err) {
-        console.error("Error in vv command:", err);
-        reply("❌ Failed to retrieve media. The message might be too old or expired.");
+  try {
+    // Download the media
+    let buffer = await client.downloadMediaMessage(quotedMsg);
+    
+    // Send based on media type
+    if (viewOnceMsg.imageMessage) {
+      await client.sendMessage(m.chat, {
+        image: buffer,
+        caption: `✨ *Peace Core is alive!* ✨\n\n${viewOnceMsg.imageMessage.caption || "No Caption"}`
+      }, { quoted: m });
+    } 
+    else if (viewOnceMsg.videoMessage) {
+      await client.sendMessage(m.chat, {
+        video: buffer,
+        caption: `✨ *King Core is alive!* ✨\n\n${viewOnceMsg.videoMessage.caption || "No Caption"}`
+      }, { quoted: m });
     }
+  } catch (error) {
+    console.error("Error downloading view once message:", error);
+    m.reply("❌ Failed to retrieve the View Once media. Error: " + error.message);
+  }
 }
 break;
 //========================================================================================================================//                  
