@@ -5694,57 +5694,41 @@ reply(vaa)
 break;
 
 //========================================================================================================================//                  
-case 'vv':
-case 'wow':
-case 'retrieve':
-case 'viewonce': {
-  if (!m.quoted) return reply("📌 Reply to a media message to retrieve it.");
+case "vv":
+case "retrieve": {
+  if (!m.quoted) return m.reply("⚠️ Quote a *View Once* image or video.");
 
-  try {
-    // 1. UNIVERSAL WRAPPER STRIPPER
-    // This finds the real message content inside any wrapper (V1, V2, or Ephemeral)
-    const getRealMsg = (msg) => {
-        if (msg?.viewOnceMessageV2?.message) return msg.viewOnceMessageV2.message;
-        if (msg?.viewOnceMessage?.message) return msg.viewOnceMessage.message;
-        if (msg?.ephemeralMessage?.message) return msg.ephemeralMessage.message;
-        return msg;
-    };
+  let quoted = m.quoted;
+  let msg = quoted.message?.viewOnceMessage?.message || quoted.message;
 
-    const realMsg = getRealMsg(m.quoted.message);
-    const type = Object.keys(realMsg || {})[0];
-    
-    // 2. Validation
-    if (!realMsg || !type || !(/image|video|audio/.test(type))) {
-      return reply("❌ Could not find valid media in this message.");
-    }
+  if (!msg) return m.reply("❌ No media found.");
 
-    const media = realMsg[type];
+  // IMAGE
+  if (msg.imageMessage) {
+    let caption = msg.imageMessage.caption || "No Caption";
 
-    // 3. NATIVE DOWNLOAD
-    const stream = await downloadContentFromMessage(
-      media,
-      type.replace('Message', '')
-    );
+    let buffer = await client.downloadMediaMessage(quoted);
 
-    let buffer = Buffer.from([]);
-    for await (const chunk of stream) {
-      buffer = Buffer.concat([buffer, chunk]);
-    }
+    await client.sendMessage(m.chat, {
+      image: buffer,
+      caption: `✨ *Peace Core is alive!* ✨\n\n${caption}`
+    }, { quoted: m });
+  }
 
-    const caption = media.caption || "✨ *Retrieved by KING M* ✨";
+  // VIDEO
+  else if (msg.videoMessage) {
+    let caption = msg.videoMessage.caption || "No Caption";
 
-    // 4. DELIVERY
-    if (/image/.test(type)) {
-      await client.sendMessage(m.chat, { image: buffer, caption }, { quoted: m });
-    } else if (/video/.test(type)) {
-      await client.sendMessage(m.chat, { video: buffer, caption }, { quoted: m });
-    } else if (/audio/.test(type)) {
-      await client.sendMessage(m.chat, { audio: buffer, mimetype: 'audio/mpeg' }, { quoted: m });
-    }
+    let buffer = await client.downloadMediaMessage(quoted);
 
-  } catch (err) {
-    logError('VV_FIX', err);
-    reply("❌ Failed to retrieve. The media has likely expired from WhatsApp servers.");
+    await client.sendMessage(m.chat, {
+      video: buffer,
+      caption: `✨ *King is alive!* ✨\n\n${caption}`
+    }, { quoted: m });
+  }
+
+  else {
+    m.reply("❌ Unsupported media type.");
   }
 }
 break;
