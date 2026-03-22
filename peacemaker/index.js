@@ -7,7 +7,7 @@ const {
   jidDecode,
   proto,
   getContentType,
-  jidNormalizedUser // Added this as required by your logic
+  jidNormalizedUser 
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
@@ -67,8 +67,18 @@ async function startPeace() {
     printQRInTerminal: false,
     browser: ["KING-M", "Safari", "5.1.7"],
     auth: state,
-    syncFullHistory: true,
+    syncFullHistory: false, // Set to false to save VPS RAM and prevent 408 on startup
+    connectTimeoutMs: 60000, // Fixed: Increased timeout to prevent connection drop
+    defaultQueryTimeoutMs: 0, // Fixed: Prevents 408 Timeout errors during media tasks
+    keepAliveIntervalMs: 10000, // Fixed: Keeps connection alive on unstable VPS networks
   });
+
+  // Fixed: Exporting download utility globally so commands can use reuploadRequest
+  client.downloadMedia = async (message, type) => {
+    return await downloadContentFromMessage(message, type, { 
+        reuploadRequest: client.updateMediaMessage 
+    });
+  };
 
   client.decodeJid = (jid) => {
     if (!jid) return jid;
@@ -79,7 +89,6 @@ async function startPeace() {
     return jid;
   };
 
-  // Auto bio update
   if (autobio === 'on') {
     setInterval(() => {
       const date = new Date();
@@ -96,7 +105,7 @@ async function startPeace() {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       
-      const ms = mek; // Alias to match your logic
+      const ms = mek;
       const clienttech = jidNormalizedUser(client.user.id);
       const fromJid = ms.key.participant || ms.key.remoteJid;
 
@@ -104,10 +113,8 @@ async function startPeace() {
         ? ms.message.ephemeralMessage.message
         : ms.message;
 
-      // ========== AUTO VIEW & LIKE STATUS (YOUR EXACT LOGIC) ==========
       if (ms.key.remoteJid === "status@broadcast") {
         try {
-          // Auto View Status
           if (autoview === "on") {
             const participantToUse = ms.key.participantPn || ms.key.participant;
             const readKey = {
@@ -121,7 +128,6 @@ async function startPeace() {
             console.log(chalk.cyan(`👁️ Viewed: ${participantToUse}`));
           }
 
-          // Auto Like Status
           if (autolike === "on" && ms.key.participant && !ms.key.fromMe) {
             const participantToUse = ms.key.participantPn || ms.key.participant;
             const reactionKey = {
@@ -141,13 +147,12 @@ async function startPeace() {
             );
             console.log(chalk.green(`✅ Liked: ${participantToUse}`));
           }
-          return; // Stop here for statuses
+          return;
         } catch (error) {
           console.error("Error handling status broadcast:", error);
         }
       }
       
-      // Mode Check for Commands
       const isMe = mek.key.fromMe;
       if (mode === 'private' && !isMe) return;
       
@@ -160,7 +165,6 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT & ANTI-CALL (MAINTAINED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
