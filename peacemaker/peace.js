@@ -36,6 +36,9 @@ const { getSettings, updateSetting } = require('../Database/config');
 
 // Persistent in-memory warn store: key = `groupJid_userJid` → count
 const warnStore = new Map();
+
+// Timestamp of bot start — used to skip old messages on reconnect
+const BOT_START_TIME = Date.now();
 const fetchSettings = require('../Database/fetchSettings');
 const { TelegraPh, UploadFileUgu, webp2mp4File, floNime } = require('../lib/peaceupload');
 const fancy = require('../lib/style');
@@ -349,7 +352,10 @@ client.ev.on('messages.upsert', async ({ messages }) => {
             if (  
                 mek.message?.protocolMessage &&  
                 mek.message.protocolMessage.type === 0  
-            ) {  
+            ) {
+                // Skip delete notifications that arrived before bot started (reconnect flood)
+                const msgTime = (mek.messageTimestamp || 0) * 1000;
+                if (msgTime < BOT_START_TIME) return;
                 await handleDeletedMessage(client, mek, antidelete);  
             }  
             else {  
@@ -412,7 +418,7 @@ if (antisticker && antisticker !== 'off' && isSticker) {
         const kid = m.sender;
         const userTag = `@${kid.split("@")[0]}`;
 
-        logInfo(`[ANTI-STICKER] Sticker detected from ${kid}`);
+        console.log(`[ANTI-STICKER] Sticker detected from ${kid}`);
 
         // ACTION: DELETE (Always delete first)
         try {
@@ -483,7 +489,7 @@ if (antisticker && antisticker !== 'off' && isSticker) {
                             text: `⚠️ @${decodedSender.split('@')[0]}, do not mention this group in your status!`, 
                             mentions: [decodedSender] 
                         });
-                        logInfo(`[ANTI-GM] Deleted status mention from ${decodedSender}`);
+                        console.log(`[ANTI-GM] Deleted status mention from ${decodedSender}`);
                     }
 
                     if (action === 'kick' && botIsAdmin) {
@@ -492,7 +498,7 @@ if (antisticker && antisticker !== 'off' && isSticker) {
                             text: `🚫 @${decodedSender.split('@')[0]} has been removed for mentioning the group in status.`, 
                             mentions: [decodedSender] 
                         });
-                        logInfo(`[ANTI-GM] Kicked ${decodedSender} for status mention`);
+                        console.log(`[ANTI-GM] Kicked ${decodedSender} for status mention`);
                     }
                 }
             }
@@ -1532,7 +1538,7 @@ break;
       // Refresh settings in memory
       client.settings = await db.getSettings();
       m.reply(`✅ Antiedit mode set to *${newMode}*`);
-      logInfo(`[SETTINGS] Antiedit updated to ${newMode} by ${m.sender.split('@')[0]}`);
+      console.log(`[SETTINGS] Antiedit updated to ${newMode} by ${m.sender.split('@')[0]}`);
     } else {
       m.reply('❌ Failed to update. Check bot logs.');
     }
@@ -6933,7 +6939,13 @@ case "listsudo":
       }
     }
   } catch (err) {
-    m.reply(util.format(err));
+    // Only reply with errors if the sender is the owner/sudo — prevents spamming groups
+    // when other bots trigger our commands and get permission errors back
+    if (Owner || !m.isGroup) {
+      m.reply(util.format(err));
+    } else {
+      console.log(chalk.red('[ERR]'), util.format(err));
+    }
   }
 };
 
