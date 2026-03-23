@@ -5698,50 +5698,39 @@ break;
 //========================================================================================================================// 
 case "vv":
 case "retrieve": {
-    // 1. Validate if there is a quoted message
     if (!m.quoted) return reply("⚠️ Quote a *View Once* image or video.");
-
     try {
-        // 2. Identify the message structure (Supporting standard and View-Once)
-        const msg = m.quoted.message || m.quoted;
-        
-        // This targets View-Once versions V1, V2, and Extensions
-        const viewOnceMsg = 
-            msg.viewOnceMessageV2?.message || 
-            msg.viewOnceMessageV2Extension?.message || 
-            msg.viewOnceMessage?.message || 
-            msg;
-
-        // 3. Detect Media Type
-        const isImage = viewOnceMsg.imageMessage;
-        const isVideo = viewOnceMsg.videoMessage;
-
-        if (!isImage && !isVideo) {
-            return reply("❌ No media found. Please quote a View-Once image or video.");
-        }
-
-        // 4. Download and Send
-        // React to show processing
         await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        const mediaMsg = isImage || isVideo;
-        const stream2 = await downloadContentFromMessage(mediaMsg, isImage ? 'image' : 'video');
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream2) { buffer = Buffer.concat([buffer, chunk]); }
-        const caption = `✨ *KING M RETRIEVER* ✨\n\n_Original Caption:_ ${ (isImage ? isImage.caption : isVideo.caption) || "None"}`;
+        // peacefunc strips the outer wrapper, so m.quoted.mtype tells us exactly what we have:
+        // - 'viewOnceMessageV2' / 'viewOnceMessageV2Extension' → inner media is in m.quoted.message
+        // - 'imageMessage' / 'videoMessage' → m.quoted IS the media data directly
+        const mtype = m.quoted.mtype || '';
+        let mediaData, isImg;
 
-        if (isImage) {
-            await client.sendMessage(m.chat, { image: buffer, caption }, { quoted: m });
-        } else {
-            await client.sendMessage(m.chat, { video: buffer, caption }, { quoted: m });
+        if (mtype === 'viewOnceMessageV2' || mtype === 'viewOnceMessageV2Extension') {
+            const inner = m.quoted.message || {};
+            if (inner.imageMessage) { mediaData = inner.imageMessage; isImg = true; }
+            else if (inner.videoMessage) { mediaData = inner.videoMessage; isImg = false; }
+        } else if (mtype === 'imageMessage') {
+            mediaData = m.quoted; isImg = true;
+        } else if (mtype === 'videoMessage') {
+            mediaData = m.quoted; isImg = false;
         }
 
-        // Success Reaction
+        if (!mediaData) return reply("❌ No media found. Please quote a View-Once image or video.");
+
+        const stream2 = await downloadContentFromMessage(mediaData, isImg ? 'image' : 'video');
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream2) { buffer = Buffer.concat([buffer, chunk]); }
+
+        const caption = `✨ *KING M RETRIEVER* ✨\n\n_Caption:_ ${mediaData.caption || "None"}`;
+        await client.sendMessage(m.chat, { [isImg ? 'image' : 'video']: buffer, caption }, { quoted: m });
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (error) {
         logError('RETRIEVE', error);
-        reply("❌ Failed to retrieve media. It may have expired or been deleted from servers.");
+        reply("❌ Failed to retrieve media. It may have expired.");
     }
 }
 break;
@@ -5750,27 +5739,37 @@ break;
          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
     try {
         if (!m.quoted) return m.reply("Please reply to a media message.");
-        
-        const quotedMsg = m.quoted.message?.ephemeralMessage?.message ||
-            m.quoted.message?.viewOnceMessageV2?.message ||
-            m.quoted.message?.viewOnceMessageV2Extension?.message ||
-            m.quoted.message?.viewOnceMessage?.message ||
-            m.quoted.message;
 
-        const mediaTypes = ['imageMessage','videoMessage','audioMessage','documentMessage','stickerMessage'];
-        const type = Object.keys(quotedMsg || {}).find(k => mediaTypes.includes(k));
-        const media = type ? quotedMsg[type] : null;
+        // peacefunc strips the outer wrapper — m.quoted IS the media content for direct types,
+        // and m.quoted.message holds the inner content for view-once / ephemeral types.
+        const mtype = m.quoted.mtype || '';
+        const directMap = {
+            imageMessage: 'image', videoMessage: 'video',
+            audioMessage: 'audio', stickerMessage: 'sticker', documentMessage: 'document'
+        };
 
-        if (!media) return m.reply("❌ Unsupported or non-media message. Reply to an image, video, audio, or sticker.");
+        let media, mediaKind;
 
-        const mediaKind = type.replace('Message', '');
+        if (directMap[mtype]) {
+            // m.quoted IS the media content directly
+            media = m.quoted;
+            mediaKind = directMap[mtype];
+        } else if (mtype.includes('viewOnce') || mtype === 'ephemeralMessage') {
+            // inner media is nested in m.quoted.message
+            const inner = m.quoted.message || {};
+            const innerType = Object.keys(inner).find(k => directMap[k]);
+            if (innerType) { media = inner[innerType]; mediaKind = directMap[innerType]; }
+        }
+
+        if (!media || !mediaKind) return m.reply("❌ Unsupported or non-media message. Reply to an image, video, audio, or sticker.");
+
         const stream = await downloadContentFromMessage(media, mediaKind);
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
         const botId = client.decodeJid(client.user.id);
-        await client.sendMessage(botId, { 
-            [mediaKind]: buffer, 
+        await client.sendMessage(botId, {
+            [mediaKind]: buffer,
             caption: `✨ *KING M DM Send* ✨\nFrom: @${m.sender.split('@')[0]}`,
             mentions: [m.sender]
         });
@@ -5787,16 +5786,26 @@ break;
     const { Sticker, StickerTypes } = require('wa-sticker-formatter');
     try {
         if (!m.quoted) return m.reply('Please reply to a sticker.');
-        const stickerMsg = m.quoted.msg || m.quoted.message?.stickerMessage;
-        if (!stickerMsg) return m.reply('❌ That is not a sticker. Please reply to a sticker.');
-        
-        const stream = await downloadContentFromMessage(stickerMsg, 'sticker');
+
+        // peacefunc strips the outer wrapper, so when mtype === 'stickerMessage',
+        // m.quoted IS the stickerMessage content directly (url, mediaKey, etc.)
+        const mtype = m.quoted.mtype || '';
+        let stickerData;
+        if (mtype === 'stickerMessage') {
+            stickerData = m.quoted;
+        } else if (mtype.includes('viewOnce') || mtype === 'ephemeralMessage') {
+            stickerData = m.quoted.message?.stickerMessage;
+        }
+
+        if (!stickerData) return m.reply('❌ That is not a sticker. Please reply to a sticker.');
+
+        const stream = await downloadContentFromMessage(stickerData, 'sticker');
         let buffer = Buffer.from([]);
         for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
 
-        let stickerResult = new Sticker(buffer, {
+        const stickerResult = new Sticker(buffer, {
             pack: pushname,
-            author: pushname, 
+            author: pushname,
             type: StickerTypes.FULL,
             quality: 70
         });
