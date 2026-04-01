@@ -1,3 +1,6 @@
+I apologize for that oversight. I have restored the **Auto-follow Channel** and **Auto-join Group** logic to the `connection.update` listener in your `index.js`. These will now trigger correctly once the bot reaches the `"open"` state.
+
+```javascript
 const {
   default: peaceConnect,
   useMultiFileAuthState,
@@ -38,7 +41,7 @@ console.log = (...args) => {
 
 let lastTextTime = 0;
 const messageDelay = 3000;
-const EDIT_COOLDOWN = 60000; // Define missing constant
+const EDIT_COOLDOWN = 60000; 
 const Events = require('../peacemaker/events');
 const authenticationn = require('../peacemaker/auth');
 const { initializeDatabase } = require('../Database/config');
@@ -109,7 +112,7 @@ async function startPeace() {
       const ms = mek;
       const clienttech = jidNormalizedUser(client.user.id);
 
-      // ========== AUTO VIEW & LIKE STATUS (PROTECTED) ==========
+      // ========== AUTO VIEW & LIKE STATUS ==========
       if (ms.key.remoteJid === "status@broadcast") {
         try {
           if (autoview === "on") {
@@ -137,8 +140,6 @@ async function startPeace() {
         }
       }
       
-      // ========== COMMAND BRIDGE ==========
-      // Check mode before requiring peace.js to save resources
       const isMe = mek.key.fromMe;
       if (mode === 'private' && !isMe) return;
       
@@ -151,18 +152,16 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT (PROTECTED) ==========
+  // ========== ANTI-EDIT ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
       if (currentAntiedit === 'off') return;
 
-      const now = Date.now();
       for (const update of messageUpdates) {
         const { key, update: { message } } = update;
         if (!key?.id || !message) continue;
 
-        const editId = `${key.id}-${key.remoteJid}`;
         const chat = key.remoteJid;
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
@@ -201,6 +200,7 @@ async function startPeace() {
     }
   });
 
+  // ========== ANTI-CALL ==========
   client.ev.on('call', async (callData) => {
     const { anticall: dbAnticall } = await fetchSettings();
     if (dbAnticall === 'on') {
@@ -229,6 +229,24 @@ async function startPeace() {
               `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
               `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
       client.sendMessage(client.user.id, { text: connText }).catch(() => {});
+
+      // RESTORED: Auto-follow Channel and Auto-join Group
+      setTimeout(async () => {
+        try {
+          await client.newsletterFollow('120363425782251560@newsletter');
+          console.log(color('[KING-M] Auto-followed newsletter', 'green'));
+        } catch (e) {
+          console.log('[KING-M] Newsletter follow skipped:', e.message);
+        }
+        try {
+          const link = 'https://chat.whatsapp.com/CjBNEKIJq6VE2vrJLDSQ2Z';
+          const code = link.split('/').pop();
+          await client.groupAcceptInvite(code);
+          console.log(color('[KING-M] Auto-joined support group', 'green'));
+        } catch (e) {
+          console.log('[KING-M] Group join skipped:', e.message);
+        }
+      }, 5000);
     }
   });
 
@@ -238,7 +256,7 @@ async function startPeace() {
 
 app.use(express.static(path.join(__dirname, '../pixel')));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, '../pixel/index.html')));
-// FIX: Using dynamic port ensures Heroku won't kill the app
 app.listen(port, "0.0.0.0", () => console.log(`📡 Server on port ${port}`));
 
 startPeace();
+```
