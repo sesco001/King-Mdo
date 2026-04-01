@@ -114,8 +114,6 @@ const {
     
     // FIX 2: Define 'Owner' immediately to prevent line 6927 ReferenceError
     
-    const Owner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(m.sender) || itsMe;
-
     const arg = (budy || "").trim().substring((budy || "").indexOf(" ") + 1);
     const arg1 = arg.trim().substring(arg.indexOf(" ") + 1);
     m.isBaileys = m.id.startsWith("BAE5") && m.id.length === 16;
