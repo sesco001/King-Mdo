@@ -456,57 +456,40 @@ if (antisticker && antisticker !== 'off' && isSticker) {
 // This detects when someone mentions the group in their status
 // ================== ANTI-GROUP MENTION MONITOR ==================
 // This runs on every message to catch status mentions
-(async () => {
-    try {
-        if (!m.isGroup) return;
+//=========================================== ANTI-GROUP MENTION (DELETE & WARN ONLY) =========================================================//
 
-        const isStatusMention = m.message?.groupStatusMentionMessage || 
-            (m.message?.extendedTextMessage?.contextInfo && 
-             !m.message.extendedTextMessage.contextInfo.isForwarded && 
-             m.message?.extendedTextMessage?.text?.includes(m.chat.split('@')[0]));
+// Detects @status, @0, and the Group JID (the hidden tag-all method)
+//=========================== ANTI-STATUS MENTION LISTENER ===========================//
+if (m.isGroup && antistatus === 'on' && !isAdmin && !Owner && isBotAdmin) {
+    // Check if the message contains a status mention (tag-all)
+    const isStatusTag = m.message?.groupStatusMentionMessage || 
+                        m.msg?.contextInfo?.groupStatusMentionMessage ||
+                        (body && body.includes('@status'));
 
-        if (isStatusMention) {
-            const { getSettings } = require('../Database/config');
-            const settings = await getSettings();
-            
-            const groupKey = `antigm-${m.chat}`;
-            const action = settings[groupKey];
-
-            if (action && action !== 'off') {
-                
-                const gmData = await client.groupMetadata(m.chat);
-                const gmParticipants = gmData.participants;
-                const decodedSender = client.decodeJid(m.sender);
-                const senderIsAdmin = gmParticipants.find(p => client.decodeJid(p.id) === decodedSender)?.admin;
-
-                if (!senderIsAdmin) {
-                    const decodedBot = client.decodeJid(client.user.id);
-                    const botIsAdmin = gmParticipants.find(p => client.decodeJid(p.id) === decodedBot)?.admin;
-
-                    if ((action === 'delete' || action === 'kick') && botIsAdmin) {
-                        await client.sendMessage(m.chat, { delete: m.key });
-                        await client.sendMessage(m.chat, { 
-                            text: `⚠️ @${decodedSender.split('@')[0]}, do not mention this group in your status!`, 
-                            mentions: [decodedSender] 
-                        });
-                        console.log(`[ANTI-GM] Deleted status mention from ${decodedSender}`);
-                    }
-
-                    if (action === 'kick' && botIsAdmin) {
-                        await client.groupParticipantsUpdate(m.chat, [decodedSender], 'remove');
-                        await client.sendMessage(m.chat, { 
-                            text: `🚫 @${decodedSender.split('@')[0]} has been removed for mentioning the group in status.`, 
-                            mentions: [decodedSender] 
-                        });
-                        console.log(`[ANTI-GM] Kicked ${decodedSender} for status mention`);
-                    }
+    if (isStatusTag) {
+        try {
+            // 1. Delete the message immediately
+            await client.sendMessage(m.chat, {
+                delete: {
+                    remoteJid: m.chat,
+                    fromMe: false,
+                    id: m.key.id,
+                    participant: m.sender
                 }
-            }
+            });
+
+            // 2. Send the Warning
+            await client.sendMessage(m.chat, {
+                text: `⚠️ *KING M ANTI-TAG* ⚠️\n\n@${m.sender.split('@')[0]}, tagging the entire group via Status Mention is strictly prohibited!\n\n*Action:* Message Deleted.`,
+                mentions: [m.sender]
+            });
+
+            console.log(`[ANTITAG] Deleted status mention from ${m.sender}`);
+        } catch (err) {
+            console.error('Anti-Status Error:', err);
         }
-    } catch (e) {
-        logError('Anti-GM', e);
     }
-})();
+}
 // ================================================================
 // ================================================================
  // Corrected sendContact function using available client methods
@@ -586,28 +569,40 @@ const totalcmds = () => {
     return numUpper;
 }         
 //========================================================================================================================// 
-    if (gptdm === 'on' && m.chat.endsWith("@s.whatsapp.net")) {
-if (itsMe) return;
-            
-try {
+  if (gptdm === 'on' && m.chat.endsWith("@s.whatsapp.net")) {
+    // 1. Safety Checks: Don't reply to yourself or empty messages
+    if (itsMe) return; 
+    if (!text || text.length < 2) return; 
+
+    try {
         const currentTime = Date.now();
-          if (currentTime - lastTextTime < messageDelay) {
-            logWarn('Message skipped: Too many messages in a short time.');
+        
+        // 2. Rate Limiting: Prevents the bot from spamming if the user sends 10 texts at once
+        if (currentTime - lastTextTime < messageDelay) {
+            console.log('Message skipped: Rate limit active for this DM.');
             return;
-          }
-        
-  const { default: Gemini } = await import('gemini-ai');
-  const gemini = new Gemini("AIzaSyDJUtskTG-MvQdlT4tNE319zBqLMFei8nQ");
-  const chat = gemini.createChat();
+        }
 
-      const res = await chat.ask(text);
+        // 3. Optional: Add a "typing..." presence to make it look natural
+        await client.sendPresenceUpdate('composing', m.chat);
 
-        await m.reply(res);
+        // 4. Fetch from Keith AI
+        const apiUrl = `https://apiskeith.top/keithai?q=${encodeURIComponent(text)}`;
+        const data = await exports.fetchJson(apiUrl);
 
-lastTextTime = currentTime;
-        
+        if (data && data.result) {
+            // 5. Send the AI response
+            await m.reply(data.result);
+            
+            // Update lastTextTime to enforce the delay for the next message
+            lastTextTime = currentTime;
+        } else {
+            console.error("AI Error: Keith API returned no result.");
+        }
+
     } catch (e) {
-        m.reply("I am unable to generate text\n\n" + e);
+        console.error("GPT DM Critical Error:", e);
+        // We keep it silent on error so the DM doesn't get filled with code errors
     }
 }
 //========================================================================================================================//
@@ -1388,50 +1383,27 @@ break;             //Status mention
 // ================== ANTI-GROUP MENTION COMMAND ==================
 // ================== ANTI-GROUP MENTION (DB INTEGRATED) ==================
 // ================== ANTI-GROUP MENTION COMMAND ==================
-case 'antigm':
-case 'antigroupmention':
-case 'agm': {
-    // 1. Require Database
-    const { updateSetting, getSettings } = require('../Database/config');
+case 'antistatus':
+        case 'antigroupmention': 
+        case 'antigm: {
+    if (!m.isGroup) return m.reply("This command is only for groups.");
+    if (!isAdmin && !Owner) return m.reply("Admin only command.");
+    if (!isBotAdmin) return m.reply("I need to be an admin to enforce this.");
 
-    // 2. Permissions
-    if (!m.isGroup) return reply("❌ This command is for groups only.");
-    if (!isAdmin) return reply("❌ Only Admins can use this command.");
-    if (!isBotAdmin) return reply("❌ I need to be Admin to delete/kick!");
+    if (!text) return m.reply(`Usage: ${prefix + command} on/off`);
 
-    // 3. Parse Input
-    const args = text ? text.split(" ") : [];
-    const subCmd = args[0] ? args[0].toLowerCase() : 'help';
-    const groupKey = `antigm-${m.chat}`; // Unique key for this group
-
-    // 4. Handle Options
-    if (subCmd === 'on' || subCmd === 'enable' || subCmd === 'delete') {
-        await updateSetting(groupKey, 'delete');
-        reply(`✅ *Anti-Group Mention Enabled!*\n\nMode: *Delete*\nI will delete messages if someone tags this group in their status.`);
-        
-    } else if (subCmd === 'kick') {
-        await updateSetting(groupKey, 'kick');
-        reply(`✅ *Anti-Group Mention Enabled!*\n\nMode: *Kick*\nI will REMOVE anyone who tags this group in their status.`);
-
-    } else if (subCmd === 'off' || subCmd === 'disable') {
-        await updateSetting(groupKey, 'off');
-        reply(`❌ *Anti-Group Mention Disabled.*`);
-
+    if (text.toLowerCase() === 'on') {
+        // Replace this with your actual database save logic (e.g., db.push)
+        antistatus = 'on'; 
+        m.reply("✅ *Anti-Status Mention* has been enabled. I will now delete all 'Tag All' mentions.");
+    } else if (text.toLowerCase() === 'off') {
+        antistatus = 'off';
+        m.reply("❌ *Anti-Status Mention* has been disabled.");
     } else {
-        // Status Check
-        const settings = await getSettings();
-        const currentAction = settings[groupKey] || 'off';
-        
-        reply(`🛡️ *ANTI-GROUP MENTION*\n\n` +
-              `*Current Status:* ${currentAction.toUpperCase()}\n\n` +
-              `*Usage:*\n` +
-              `▪️ *${prefix}agm on* (Deletes status updates)\n` +
-              `▪️ *${prefix}agm kick* (Kicks the user)\n` +
-              `▪️ *${prefix}agm off* (Disables feature)`);
+        m.reply(`Use *on* to enable or *off* to disable.`);
     }
 }
-break;
-                        //togstatus
+break;                 //togstatus
                 // ================== GROUP STATUS (GS) ==================
 // ================== GROUP STATUS (GS) - REBUILT ==================
 // ================== GROUP STATUS (GS) - UPDATED ==================
@@ -3273,77 +3245,92 @@ case "king":
                 break;
 
 //========================================================================================================================//
-case "gpt4":
-           {
-        if (!text) return reply(`Hello there, what's your question?`);
-          let d = await fetchJson(
-            `https://api.bk9.dev/ai/Aoyo?q=${text}`
-          );
-          if (!d.BK9) {
+case "gpt4": {
+    if (!text) return reply(`Hello there, what's your question?`);
+
+    try {
+        // Fetching from the new Keith API
+        let d = await fetchJson(`https://apiskeith.top/ai/gpt?q=${encodeURIComponent(text)}`);
+
+        // Most APIs of this type return the result in a 'result' or 'response' field
+        // If the API returns a direct string or different key, adjust 'd.result' below
+        if (!d || !d.result) {
             return reply(
-              "An error occurred while fetching the AI chatbot response. Please try again later."
+                "An error occurred while fetching the AI chatbot response. Please try again later."
             );
-          } else {
-            reply(d.BK9);
-          }
-                     }
-                      break;
+        } else {
+            reply(d.result);
+        }
+    } catch (e) {
+        console.error(e);
+        reply("Connection to the AI service failed.");
+    }
+}
+break;
 
 //========================================================================================================================//
 case 'gpt3': {
-        if (!q) return reply("Holla, I'm listening to you..");
-try {
-        const apiUrl = `https://vapis.my.id/api/openai?q=${encodeURIComponent(q)}`;
+    if (!q) return reply("Holla, I'm listening to you..");
+
+    try {
+        // Updated to the o3 model endpoint from Keith API
+        const apiUrl = `https://apiskeith.top/ai/o3?q=${encodeURIComponent(q)}`;
         const { data } = await axios.get(apiUrl);
 
-   if (!data || !data.result) {
-            return reply("OpenAI failed to respond. Please try again later.");
+        if (!data || !data.result) {
+            return reply("The AI failed to respond. Please try again later.");
         }
-        await reply(`${data.result}`);   
-   
-} catch (e) {
-        console.error("Error in OpenAI command:", e); 
-        reply("An error occurred while communicating With API");
-    }
-};
-  break;
 
-//========================================================================================================================//                          
-case "gpt2":
-   {
-       if (!q) return reply("Hello there,  what's your question ?");
-try {
-  const apiUrl = `https://lance-frank-asta.onrender.com/api/gpt?q=${encodeURIComponent(q)}`;
-  const { data } = await axios.get(apiUrl);
+        await reply(data.result);
 
-if (!data || !data.message) {
-        return reply("Oops an error occurred!!.");
-        }
-        await reply(`${data.message}`);
     } catch (e) {
-        console.error("Error in AI command:", e);
- reply("An error occurred while communicating with API.");
+        console.error("Error in o3 AI command:", e);
+        reply("An error occurred while communicating with the API.");
     }
-}; 
-                break;
+}
+break;
+//========================================================================================================================//                          
+case "gpt2": case "qwenaai": {
+    if (!q) return reply("Hello there, what's your question?");
+
+    try {
+        // Updated to the Qwen AI endpoint
+        const apiUrl = `https://apiskeith.top/ai/qwenai?q=${encodeURIComponent(q)}`;
+        const { data } = await axios.get(apiUrl);
+
+        // Adjusted to check for data.result which is standard for this API
+        if (!data || !data.result) {
+            return reply("Oops, an error occurred while fetching the response.");
+        }
+
+        await reply(data.result);
+    } catch (e) {
+        console.error("Error in Qwen AI command:", e);
+        reply("An error occurred while communicating with the API.");
+    }
+}
+break;
 
 //========================================================================================================================//
-case 'gpt':{
+case 'gpt': case 'deepseek': {
+    if (!text) return m.reply("Hello there, what's going on ?");
 
-if (!text) return m.reply("Hello there, what's going on ?");
-        try {
-     const data = await fetchJson(`https://api.dreaded.site/api/aichat?query=${text}`);
-                
-    if (data && data.result) {
+    try {
+        // Updated to the DeepSeek-V3 endpoint
+        const data = await fetchJson(`https://apiskeith.top/ai/deepseekV3?q=${encodeURIComponent(text)}`);
+
+        // Using data.result as per the Keith API standard response structure
+        if (data && data.result) {
             const res = data.result;
             await m.reply(res);
-    } else {
-            m.reply("An error occurred!!");
+        } else {
+            m.reply("An error occurred while fetching the response.");
+        }
+    } catch (error) {
+        // Detailed error logging for debugging
+        reply('An error occurred while communicating with the API:\n' + error.message);
     }
-        } catch (error) {
-reply('An error occured while communicating with the APIs\n' + error);
 }
-  }
 break;
 
 //========================================================================================================================//                          
@@ -3495,54 +3482,38 @@ break;
                       
 //========================================================================================================================//                  
                       case "ai": {
-                              const {
-    GoogleGenerativeAI: _0x817910
-  } = require("@google/generative-ai");
-  const _0xc0423b = require("axios");
-                      
-  try {
-    if (!m.quoted) {
-      return m.reply("𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝘁𝗵𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵!");
+    try {
+        // 1. Check for quoted message and text instructions
+        if (!m.quoted) return m.reply("𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝘁𝗵𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵!");
+        if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝘀𝗼𝗺𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵!");
+
+        // 2. Validate that the quoted media is an image
+        const mime = (m.quoted.msg || m.quoted).mimetype || '';
+        if (!/image/.test(mime)) return m.reply("𝗛𝘂𝗵 𝘁𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲!");
+
+        m.reply("𝗔 𝗺𝗼𝗺𝗲𝗻𝘁, 𝗹𝗲𝗺𝗺𝗲 𝗮𝗻𝗮𝗹𝘆𝘀𝗲 𝘁𝗵𝗲 𝗰𝗼𝗻𝘁𝗲𝗻𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 𝗜𝗺𝗮𝗴𝗲...");
+
+        // 3. Download the image and upload to Catbox (or your preferred uploader)
+        let media = await client.downloadAndSaveMediaMessage(m.quoted);
+        let imageUrl = await uploadToCatbox(media);
+
+        // 4. Call the Keith AI Vision API
+        const apiUrl = `https://apiskeith.top/ai/vision?image=${encodeURIComponent(imageUrl)}&q=${encodeURIComponent(text)}`;
+        const { data } = await axios.get(apiUrl);
+
+        // 5. Send the response
+        if (data && data.result) {
+            await m.reply(data.result);
+        } else {
+            m.reply("The AI failed to analyze the image. Please try again later.");
+        }
+
+    } catch (error) {
+        console.error("Error in Vision command:", error);
+        m.reply("I am unable to analyze images at the moment.\n" + error.message);
     }
-    if (!text) {
-      return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝘀𝗼𝗺𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵! 𝗧𝗵𝗶𝘀 𝗶𝘀 𝗣𝗘𝗔𝗖𝗘 𝗔𝗶, 𝘂𝘀𝗶𝗻𝗴 𝗴𝗲𝗺𝗶𝗻𝗶-𝗽𝗿𝗼-𝘃𝗶𝘀𝗶𝗼𝗻 𝘁𝗼 𝗮𝗻𝗮𝗹𝘆𝘀𝗲 𝗶𝗺𝗮𝗴𝗲𝘀.");
-    }
-    if (!/image|pdf/.test(mime)) {
-      return m.reply("𝗛𝘂𝗵 𝘁𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲! 𝗣𝗹𝗲𝗮𝘀𝗲 𝗧𝗮𝗴 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘄𝗶𝘁𝗵 𝘁𝗵𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵 !");
-    }
-    let _0x3439a2 = await client.downloadAndSaveMediaMessage(m.quoted);
-    let _0x3dfb7c = await uploadToCatbox(_0x3439a2);
-    m.reply(`𝗔 𝗺𝗼𝗺𝗲𝘁, 𝗹𝗲𝗺𝗺𝗲 𝗮𝗻𝗮𝗹𝘆𝘀𝗲 𝘁𝗵𝗲 𝗰𝗼𝗻𝘁𝗲𝗻𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 ${mime.includes("pdf") ? "𝗣𝗗𝗙" : "𝗜𝗺𝗮𝗴𝗲"} ...`);
-    const _0x4e9e6a = new _0x817910("AIzaSyDJUtskTG-MvQdlT4tNE319zBqLMFei8nQ");
-    async function _0x309a3c(_0x1400ed, _0x1a081e) {
-      const _0x53e4b2 = {
-        responseType: "arraybuffer"
-      };
-      const _0x1175d9 = await _0xc0423b.get(_0x1400ed, _0x53e4b2);
-      const _0x2a4862 = Buffer.from(_0x1175d9.data).toString("base64");
-      const _0x2f6e31 = {
-        data: _0x2a4862,
-        mimeType: _0x1a081e
-      };
-      const _0x14b65d = {
-        inlineData: _0x2f6e31
-      };
-      return _0x14b65d;
-    }
-    const _0x22a6bb = {
-      model: "gemini-1.5-flash"
-    };
-    const _0x42849d = _0x4e9e6a.getGenerativeModel(_0x22a6bb);
-    const _0x2c743f = [await _0x309a3c(_0x3dfb7c, "image/jpeg")];
-    const _0xcf53e3 = await _0x42849d.generateContent([text, ..._0x2c743f]);
-    const _0x195f9c = await _0xcf53e3.response;
-    const _0x3db5a3 = _0x195f9c.text();
-    await m.reply(_0x3db5a3);
-  } catch (_0x4b3921) {
-    m.reply("I am unable to analyze images at the moment\n" + _0x4b3921);
-  }
 }
- break;
+break;
 
 //========================================================================================================================//                  
               case "ai2": {
@@ -3571,36 +3542,39 @@ m.reply("I am unable to analyze images at the moment\n" + e)
                 break;
 
 //========================================================================================================================//                  
-              case "vision": {
-                      if (!msgR || !text) {
-    m.reply("𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝗮𝗻𝗱 𝗴𝗶𝘃𝗲 𝘀𝗼𝗺𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵. 𝗜'𝗺 KING M, 𝗶 𝘂𝘀𝗲 𝗕𝗮𝗿𝗱 𝘁𝗼 𝗮𝗻𝗮𝗹𝘆𝘇𝗲 𝗶𝗺𝗮𝗴𝗲𝘀.");
-    return;
-  }
-  ;
-  let _0x44b3e0;
-  if (msgR.imageMessage) {
-    _0x44b3e0 = msgR.imageMessage;
-  } else {
-    m.reply("𝗛𝘂𝗵, 𝗧𝗵𝗮𝘁'𝘀 𝗻𝗼𝘁 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲, 𝗦𝗲𝗻𝗱 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲 𝘁𝗵𝗲𝗻 𝘁𝗮𝗴 𝗶𝘁 𝘄𝗶𝘁𝗵 𝘁𝗵𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 !");
-    return;
-  };
-  try {
-    let _0x11f50e = await client.downloadAndSaveMediaMessage(_0x44b3e0);
-    let _0x45392d = await uploadToCatbox(_0x11f50e);
-    m.reply("𝗔 𝗺𝗼𝗺𝗲𝗻𝘁, 𝗟𝗲𝗺𝗺𝗲 𝗮𝗻𝗮𝗹𝘆𝘇𝗲 𝘁𝗵𝗲 𝗰𝗼𝗻𝘁𝗲𝗻𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 𝗶𝗺𝗮𝗴𝗲. . .");
-    let _0x4f137e = await (await fetch("https://api.bk9.dev/ai/geminiimg?url=" + _0x45392d + "&q=" + text)).json();
-    const _0x4bfd63 = {
-      text: _0x4f137e.BK9
-    };
-    await client.sendMessage(m.chat, _0x4bfd63, {
-      quoted: m
-    });
-  } catch (_0x1be711) {
-    m.reply("An error occured\n" + _0x1be711);
-  }
-}
-         break;
+              case 'vision': case 'aiimg': {
+    // Check if the user is replying to an image or if an image is sent
+    const quoted = m.quoted ? m.quoted : m;
+    const mime = (quoted.msg || quoted).mimetype || '';
 
+    if (!/image/.test(mime)) return m.reply("Please reply to an image or send an image with the command.");
+    if (!text) return m.reply("Please provide a question about the image.");
+
+    try {
+        m.reply('*Analyzing image, please wait...*');
+
+        // 1. Download the media and upload to a link (assuming you have a 'upload' function)
+        // Note: The Keith API requires a URL. You usually need to upload the image first.
+        let media = await quoted.download();
+        let link = await upload(media); // Replace with your actual upload function (Telegra.ph/Imgur)
+
+        // 2. Call the Vision API
+        const apiUrl = `https://apiskeith.top/ai/vision?image=${encodeURIComponent(link)}&q=${encodeURIComponent(text)}`;
+        const data = await fetchJson(apiUrl);
+
+        if (!data || !data.result) {
+            return m.reply("The Vision API failed to respond. Please try again later.");
+        }
+
+        // 3. Reply with the text description
+        await m.reply(data.result);
+
+    } catch (error) {
+        console.error(error);
+        m.reply("An error occurred while processing the image analysis.");
+    }
+}
+break;
 //========================================================================================================================//                  
                       case 'remini': {
                         if (!quoted) return reply(`𝗪𝗵𝗲𝗿𝗲 𝗶𝘀 𝘁𝗵𝗲 𝗶𝗺𝗮𝗴𝗲 ?`)
@@ -4203,52 +4177,47 @@ const rel = await quote(xf, pushname, pppuser)
 
 //========================================================================================================================//                  
                       case "fullpp": {
-                      if(!Owner) throw NotOwner; 
-                      const { S_WHATSAPP_NET } = require('@whiskeysockets/baileys');
-                      try {
-const fs = require("fs");
-if(!msgR) { m.reply('𝗤𝘂𝗼𝘁𝗲 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲...') ; return } ;
+    if (!Owner) throw NotOwner;
+    const { S_WHATSAPP_NET } = require('@whiskeysockets/baileys');
+    
+    try {
+        // Use the 'quoted' object created by your smsg function
+        if (!m.quoted || !/image/.test(m.quoted.mtype)) {
+            return m.reply('𝗛𝘂𝗵 𝘁𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲... Quote an image!');
+        }
 
-let media;
-if (msgR.imageMessage) {
-     media = msgR.imageMessage
+        m.reply("Updating profile picture...");
 
-  } else {
-    m.reply('𝗛𝘂𝗵 𝘁𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮𝗻 𝗶𝗺𝗮𝗴𝗲...'); return
-  } ;
+        // Use the download helper defined in your smsg
+        let mediaBuffer = await m.quoted.download();
 
-var medis = await client.downloadAndSaveMediaMessage(media);
-         var {
-                        img
-                    } = await generateProfilePicture(medis)
+        // Use the generateProfilePicture exported in your file
+        var { img } = await exports.generateProfilePicture(mediaBuffer);
 
-client.query({
-                tag: 'iq',
-                attrs: {
-                    target: undefined,
-                    to: S_WHATSAPP_NET,
-                    type:'set',
-                    xmlns: 'w:profile:picture'
-                },
-                content: [
-                    {
-                        tag: 'picture',
-                        attrs: { type: 'image' },
-                        content: img
-                    }
-                ]
-            })      
-                    fs.unlinkSync(medis)
-                    m.reply("𝗣𝗿𝗼𝗳𝗶𝗹𝗲 𝗽𝗶𝗰𝘁𝘂𝗿𝗲 𝘂𝗽𝗱𝗮𝘁𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝗳𝘂𝗹𝗹𝘆✅")
+        await client.query({
+            tag: 'iq',
+            attrs: {
+                to: S_WHATSAPP_NET,
+                type: 'set',
+                xmlns: 'w:profile:picture'
+            },
+            content: [
+                {
+                    tag: 'picture',
+                    attrs: { type: 'image' },
+                    content: img
+                }
+            ]
+        });
 
-} catch (error) {
+        m.reply("𝗣𝗿𝗼𝗳𝗶𝗹𝗲 𝗽𝗶𝗰𝘁𝘂𝗿𝗲 𝘂𝗽𝗱𝗮𝘁𝗲𝗱 𝘀𝘂𝗰𝗰𝗲𝘀𝗳𝘂𝗹𝗹𝘆✅");
 
-m.reply("An error occured while updating profile photo\n" + error)
-
+    } catch (error) {
+        console.error(error);
+        m.reply("An error occurred:\n" + error.message);
+    }
 }
-     }
-          break;
-
+break;
 //========================================================================================================================//                  
             case "upload": {
  const fs = require("fs");
@@ -6007,7 +5976,7 @@ case "del": {
           case "leave": { 
                  if (!Owner) throw NotOwner;
                  if (!m.isGroup) throw group;
- await client.sendMessage(m.chat, { text : '𝗚𝗼𝗼𝗱𝗯𝘆𝗲 𝗲𝘃𝗲𝗿𝘆𝗼𝗻𝗲👋. 𝗣𝗘𝗔𝗖𝗘-𝗔𝗶 𝗶𝘀 𝗟𝗲𝗮𝘃𝗶𝗻𝗴 𝘁𝗵𝗲 𝗚𝗿𝗼𝘂𝗽 𝗻𝗼𝘄...' , mentions: participants.map(a => a.id)}, { quoted : m }); 
+ await client.sendMessage(m.chat, { text : '𝗚𝗼𝗼𝗱𝗯𝘆𝗲 𝗲𝘃𝗲𝗿𝘆𝗼𝗻𝗲👋. King-𝗔𝗶 𝗶𝘀 𝗟𝗲𝗮𝘃𝗶𝗻𝗴 𝘁𝗵𝗲 𝗚𝗿𝗼𝘂𝗽 𝗻𝗼𝘄...' , mentions: participants.map(a => a.id)}, { quoted : m }); 
                  await client.groupLeave(m.chat); 
   
              } 
@@ -6069,40 +6038,47 @@ client.sendMessage(
 
 //========================================================================================================================//                  
 case "whatsong": case "shazam": {
-          let acr = new acrcloud({
-            'host': "identify-eu-west-1.acrcloud.com",
-            'access_key': '2631ab98e77b49509e3edcf493757300',
-            'access_secret': "KKbVWlTNCL3JjxjrWnywMdvQGanyhKRN0fpQxyUo"
-          });
-          if (!m.quoted) {
-            throw "Tagg a short video or audio";
-          }
+    try {
+        // 1. Check if user quoted an audio or video
+        if (!m.quoted) return m.reply("Please tag a short video or audio to identify the song.");
 
-          let d = m.quoted ? m.quoted : m;
-          let mimes = (d.msg || d).mimetype || d.mediaType || '';
-          if (/video|audio/.test(mimes)) {
-            let buffer = await d.download();
-            await reply("Analyzing the media...");
-            let {
-              status,
-              metadata
-            } = await acr.identify(buffer);
-            if (status.code !== 0x0) {
-              throw status.msg;
-            }
-            let { title, artists, album, genres, release_date } = metadata.music[0x0];
-            let txt = "*• Title:* " + title + (artists ? "\n*• Artists:* " + artists.map(_0x4f5d59 => _0x4f5d59.name).join(", ") : '');
-            txt += '' + (album ? "\n*• Album:* " + album.name : '') + (genres ? "\n*• Genres:* " + genres.map(_0xf7bf2e => _0xf7bf2e.name).join(", ") : '') + "\n";
-            txt += "*• Release Date:* " + release_date;
-            await client.sendMessage(m.chat, {
-              'text': txt.trim()
-            }, {
-              'quoted': m
-            });
-          }
+        let d = m.quoted;
+        let mimes = (d.msg || d).mimetype || '';
+
+        if (!/video|audio/.test(mimes)) return m.reply("Huh? This is not a video or audio file.");
+
+        m.reply("Analyzing the media... Please wait.");
+
+        // 2. Download the media using your smsg helper
+        let mediaBuffer = await d.download();
+
+        // 3. Save temporarily and upload to get a URL (Required by the API)
+        let tempFile = exports.getRandom(mimes.includes('video') ? '.mp4' : '.mp3');
+        fs.writeFileSync(tempFile, mediaBuffer);
+        
+        // Assuming uploadToCatbox is available in your scope
+        let mediaUrl = await uploadToCatbox(tempFile);
+        fs.unlinkSync(tempFile); // Delete temp file
+
+        // 4. Call the Keith AI Shazam API
+        const apiUrl = `https://apiskeith.top/ai/shazam?url=${encodeURIComponent(mediaUrl)}`;
+        const data = await exports.fetchJson(apiUrl);
+
+        if (!data || !data.result) {
+            return m.reply("I couldn't identify the song. The audio might be too short or unclear.");
         }
-        break; 
-                      
+
+        // 5. Format and send the response
+        // Note: Keith API usually returns result as a pre-formatted string or object. 
+        // If it returns an object, you can destructure it. If string, just reply:
+        await m.reply(`*SONG IDENTIFIED*\n\n${data.result}`);
+
+    } catch (error) {
+        console.error(error);
+        m.reply("An error occurred while identifying the song:\n" + error.message);
+    }
+}
+break;
 //========================================================================================================================//
 case "s": 
 case "sticker": {
@@ -6144,41 +6120,58 @@ case "sticker": {
 }
 break;
 //========================================================================================================================//                  
-           case "dp": {
-  let ha;
-  let qd;
-  let pp2;
-  
-  if (m.quoted) {
-    try { 
-      ha = m.quoted.sender;
-      qd = await client.getName(ha);
-      pp2 = await client.profilePictureUrl(ha, 'image');
-    } catch {  
-      pp2 = 'https://tinyurl.com/yx93l6da';
-    }
-  } else if (m.text.includes(' ')) {
-    const number = m.text.split(' ')[1].trim();
+        case "dp": {
+    let target;
+    let name;
+    let ppUrl;
+
     try {
-      ha = number.includes('@') ? number : `${number}@s.whatsapp.net`;
-      qd = await client.getName(ha);
-      pp2 = await client.profilePictureUrl(ha, 'image');
-    } catch {
-      pp2 = 'https://tinyurl.com/yx93l6da';
+        // 1. Identify the target (Quoted > Mentioned > Text Number)
+        if (m.quoted) {
+            target = m.quoted.sender;
+        } else if (m.mentionedJid && m.mentionedJid[0]) {
+            target = m.mentionedJid[0];
+        } else if (text) {
+            // Clean the input to get just numbers
+            let number = text.replace(/[^0-9]/g, '');
+            target = number + '@s.whatsapp.net';
+        } else {
+            return m.reply(`Tag a user or provide a number! Example: .dp @user`);
+        }
+
+        // 2. Get the Name
+        try {
+            name = await client.getName(target);
+        } catch {
+            name = target.split('@')[0];
+        }
+
+        // 3. Fetch the DP URL
+        try {
+            // 'image' returns the high-res version
+            ppUrl = await client.profilePictureUrl(target, 'image');
+        } catch (e) {
+            // If high-res fails, try the preview version
+            try {
+                ppUrl = await client.profilePictureUrl(target, 'preview');
+            } catch {
+                // Fallback to a default "No Profile Picture" image
+                ppUrl = 'https://cdn.pixabay.com/photo/2015/10/05/22/37/blank-profile-picture-973460_960_720.png';
+            }
+        }
+
+        // 4. Send the result
+        await client.sendMessage(m.chat, { 
+            image: { url: ppUrl }, 
+            caption: `*👤 Name:* ${name}\n*📱 Number:* ${target.split('@')[0]}`,
+        }, { quoted: m });
+
+    } catch (err) {
+        console.error(err);
+        m.reply("Failed to fetch the profile picture.");
     }
-  } else {
-    throw `Tag a user or provide a number after "dp"!`;
-  }
-  
-  const bar = `Profile Picture of ${qd}`;
-  await client.sendMessage(m.chat, { 
-    image: { url: pp2 }, 
-    caption: bar, 
-    fileLength: "999999999999"
-  }, { quoted: m });
 }
 break;
-
 //========================================================================================================================//                  
 case "list": case "vars": case "help":
 let vaa = `𝟏 Owner➣ 𝐆𝐞𝐭 𝗼𝘄𝗻𝗲𝗿  𝐜𝐨𝐧𝐭𝐚𝐜𝐭\n\n𝟐 𝐁𝐫𝐨𝐚𝐝𝐜𝐚𝐬𝐭➣ 𝐒𝐞𝐧𝐝𝐬 𝐦𝐞𝐬𝐬𝐚𝐠𝐞 𝐭𝐨 𝐚𝐥𝐥 𝐠𝐫𝐨𝐮𝐩𝐬\n\n𝟑 𝐉𝐨𝐢𝐧➣ 𝐭𝐚𝐠 𝐠𝐫𝐨𝐮𝐩 𝐥𝐢𝐧𝐤 𝐰𝐢𝐭𝐡 𝐣𝐨𝐢𝐧\n\n𝟒 𝐛𝐨𝐭𝐩𝐩➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐛𝐨𝐭𝐬 𝐚𝐜𝐜𝐨𝐮𝐧𝐭 𝐝𝐩\n\n𝟓 𝐁𝐥𝐨𝐜𝐤➣ 𝐁𝐥𝐨𝐜𝐤 𝐭𝐡𝐞𝐦 𝐟𝐚𝐤𝐞 𝐟𝐫𝐢𝐞𝐧𝐝𝐬\n\n𝟔 𝐊𝐢𝐥𝐥➣ 𝐊𝐢𝐥𝐥𝐬 𝐠𝐫𝐨𝐮𝐩 𝐢𝐧 𝐬𝐞𝐜𝐨𝐧𝐝𝐬\n\n𝟕 𝐔𝐧𝐛𝐥𝐨𝐜𝐤➣ 𝐆𝐢𝐯𝐞 𝐭𝐡𝐞𝐦 𝐟𝐚𝐤𝐞 𝐟𝐫𝐢𝐞𝐧𝐝𝐬 𝐚 𝐬𝐞𝐜𝐨𝐧𝐝 𝐜𝐡𝐚𝐧𝐜𝐞\n\n𝟖 𝐒𝐞𝐭𝐯𝐚𝐫➣ 𝐒𝐞𝐭 𝐯𝐚𝐫𝐬 𝐢𝐧 𝐡𝐞𝐫𝐨𝐤𝐮\n\n𝟗 𝐒𝐭𝐢𝐜𝐤𝐞𝐫➣ 𝐂𝐨𝐧𝐯𝐞𝐫𝐭𝐬 𝐚 𝐩𝐡𝐨𝐭𝐨 𝐨𝐫 𝐚 𝐬𝐡𝐨𝐫𝐭 𝐯𝐢𝐝𝐞𝐨 𝐭𝐨 𝐚 𝐬𝐭𝐢𝐜𝐤𝐞𝐫\n\n𝟏𝟎 𝐓𝐨𝐢𝐦𝐠➣ 𝐂𝐨𝐧𝐯𝐞𝐫𝐭𝐬 𝐚 𝐬𝐭𝐢𝐜𝐤𝐞𝐫 𝐭𝐨 𝐚 𝐩𝐡𝐨𝐭𝐨\n\n𝟏𝟏 𝐏𝐥𝐚𝐲➣ 𝐆𝐞𝐭 𝐲𝐨𝐮𝐫 𝐟𝐚𝐯𝐨𝐫𝐢𝐭𝐞 𝐬𝐨𝐧𝐠\n\n𝟏𝟐 𝐖𝐡𝐚𝐭𝐬𝐨𝐧𝐠➣ 𝐠𝐞𝐭 𝐭𝐡𝐞 𝐭𝐢𝐭𝐥𝐞 𝐨𝐟 𝐭𝐡𝐞 𝐬𝐨𝐧𝐠\n\n𝟏𝟑 𝐘𝐭𝐬 ➣ 𝐆𝐞𝐭 𝐘𝐨𝐮𝐓𝐮𝐛𝐞 𝐯𝐢𝐝𝐞𝐨𝐬\n\n𝟏𝟒 𝐌𝐨𝐯𝐢𝐞➣ 𝐆𝐞𝐭 𝐲𝐨𝐮𝐫 𝐟𝐚𝐯𝐨𝐫𝐢𝐭𝐞 𝐦𝐨𝐯𝐢𝐞 𝐝𝐞𝐭𝐚𝐢𝐥𝐬\n\n𝟏𝟓 𝐌𝐢𝐱➣ 𝐂𝐨𝐦𝐛𝐢𝐧𝐞𝐬 +𝟐𝐞𝐦𝐨𝐣𝐢𝐬\n\n𝟏𝟔 𝐀𝐢-𝐢𝐦𝐠➣ 𝐆𝐞𝐭 𝐚𝐧 𝐀𝐢 𝐩𝐡𝐨𝐭𝐨\n\n𝟏𝟕 𝐆𝐩𝐭 ➣ 𝐇𝐞𝐫𝐞 𝐭𝐨 𝐚𝐧𝐬𝐰𝐞𝐫 𝐲𝐨𝐮𝐫 𝐪𝐮𝐞𝐬𝐭𝐢𝐨𝐧𝐬\n\n𝟏𝟖 𝐃𝐩➣ 𝐆𝐞𝐭𝐬 𝐚 𝐩𝐞𝐫𝐬𝐨𝐧 𝐝𝐩\n\n𝟏𝟗 𝐒𝐩𝐞𝐞𝐝 ➣ 𝐂𝐡𝐞𝐜𝐤𝐬 𝐛𝐨𝐭𝐬 𝐬𝐩𝐞𝐞𝐝\n\n𝟐𝟎 𝐀𝐥𝐢𝐯𝐞➣ 𝐂𝐡𝐞𝐜𝐤 𝐰𝐡𝐞𝐭𝐡𝐞𝐫 𝐭𝐡𝐞 𝐛𝐨𝐭 𝐢𝐬 𝐬𝐭𝐢𝐥𝐥 𝐤𝐢𝐜𝐤𝐢𝐧𝐠\n\n𝟐𝟏 𝐑𝐮𝐧𝐭𝐢𝐦𝐞➣ 𝐖𝐡𝐞𝐧 𝐝𝐢𝐝 𝐛𝐨𝐭 𝐬𝐭𝐚𝐫𝐭𝐞𝐝 𝐨𝐩𝐞𝐫𝐚𝐭𝐢𝐧𝐠\n\n𝟐𝟐 𝐒𝐜𝐫𝐢𝐩𝐭➣ 𝐆𝐞𝐭 𝐛𝐨𝐭 𝐬𝐜𝐫𝐢𝐩𝐭\n\n𝟐𝟑 𝐎𝐰𝐧𝐞𝐫  ➣ 𝐆𝐞𝐭 𝐨𝐰𝐧𝐞𝐫(𝐬) 𝐜𝐨𝐧𝐭𝐚𝐜𝐭\n\n𝟐𝟒 𝐕𝐚𝐫𝐬 ➣ 𝐒𝐞𝐞 𝐚𝐥𝐥 𝐯𝐚𝐫𝐢𝐚𝐛𝐥𝐞𝐬\n\n𝟐𝟓 𝐏𝐫𝐨𝐦𝐨𝐭𝐞➣ 𝐆𝐢𝐯𝐞𝐬 𝐨𝐧𝐞 𝐚𝐝𝐦𝐢𝐧 𝐫𝐨𝐥𝐞\n\n𝟐𝟔 𝐃𝐞𝐦𝐨𝐭𝐞➣ 𝐃𝐞𝐦𝐨𝐭𝐞𝐬 𝐟𝐫𝐨𝐦 𝐠𝐫𝐨𝐮𝐩 𝐚𝐝𝐦𝐢𝐧 𝐭𝐨 𝐚 𝐦𝐞𝐦𝐛𝐞𝐫\n\n𝟐𝟕 𝐃𝐞𝐥𝐞𝐭𝐞➣ 𝐃𝐞𝐥𝐞𝐭𝐞 𝐚 𝐦𝐞𝐬𝐬𝐚𝐠𝐞\n\n𝟐𝟖 𝐑𝐞𝐦𝐨𝐯𝐞/𝐤𝐢𝐜𝐤➣ 𝐊𝐢𝐜𝐤 𝐭𝐡𝐚𝐭 𝐭𝐞𝐫𝐫𝐨𝐫𝐢𝐬𝐭 𝐟𝐫𝐨𝐦 𝐚 𝐠𝐫𝐨𝐮𝐩\n\n𝟐𝟗 𝐅𝐨𝐫𝐞𝐢𝐠𝐧𝐞𝐫𝐬➣ 𝐆𝐞𝐭 𝐟𝐨𝐫𝐞𝐢𝐠𝐧 𝐧𝐮𝐦𝐛𝐞𝐫𝐬\n\n𝟑𝟎 𝐂𝐥𝐨𝐬𝐞➣ 𝐓𝐢𝐦𝐞 𝐟𝐨𝐫 𝐠𝐫𝐨𝐮𝐩 𝐦𝐞𝐦𝐛𝐞𝐫𝐬 𝐭𝐨 𝐭𝐚𝐤𝐞 𝐚 𝐛𝐫𝐞𝐚𝐤 𝐨𝐧𝐥𝐲 𝐚𝐝𝐦𝐢𝐧𝐬 𝐜𝐚𝐧 𝐜𝐡𝐚𝐭\n\n𝟑𝟏 𝐎𝐩𝐞𝐧 ➣ 𝐄𝐯𝐞𝐫𝐲𝐨𝐧𝐞 𝐜𝐚𝐧 𝐜𝐡𝐚𝐭 𝐢𝐧 𝐚 𝐠𝐫𝐨𝐮𝐩\n\n𝟑𝟐 𝐈𝐜𝐨𝐧➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐠𝐫𝐨𝐮𝐩 𝐢𝐜𝐨𝐧\n\n𝟑𝟑 𝐒𝐮𝐛𝐣𝐞𝐜𝐭➣ 𝐂𝐡𝐚𝐧𝐠𝐞 𝐠𝐫𝐨𝐮𝐩 𝐬𝐮𝐛𝐣𝐞𝐜𝐭\n\n𝟑𝟒 𝐃𝐞𝐬𝐜➣ 𝐆𝐞𝐭 𝐠𝐫𝐨𝐮𝐩 𝐝𝐞𝐬𝐜𝐫𝐢𝐩𝐭𝐢𝐨𝐧\n\n𝟑𝟓 𝐋𝐞𝐚𝐯𝐞➣ 𝐓𝐡𝐞 𝐠𝐫𝐨𝐮𝐩 𝐢𝐬 𝐛𝐨𝐫𝐢𝐧𝐠 ,𝐭𝐢𝐦𝐞 𝐟𝐨𝐫 𝐛𝐨𝐭 𝐭𝐨 𝐥𝐞𝐚𝐯𝐞\n\n𝟑𝟔 𝐓𝐚𝐠𝐚𝐥𝐥 ➣ 𝐓𝐚𝐠 𝐞𝐯𝐞𝐫𝐲𝐨𝐧𝐞 𝐢𝐧 𝐚 𝐠𝐫𝐨𝐮𝐩 𝐜𝐡𝐚𝐭\n\n𝟑𝟕 𝐇𝐢𝐝𝐞𝐭𝐚𝐠➣ 𝐀𝐭𝐭𝐞𝐧𝐭𝐢𝐨𝐧! 𝐀𝐭𝐭𝐞𝐧𝐭𝐢𝐨𝐧! 𝐬𝐨𝐦𝐞𝐨𝐧𝐞 𝐡𝐚𝐬 𝐬𝐨𝐦𝐞𝐭𝐡𝐢𝐧𝐠 𝐭𝐨 𝐬𝐚𝐲\n\n𝟑𝟖 𝐑𝐞𝐯𝐨𝐤𝐞 ➣ 𝐑𝐞𝐬𝐞𝐭 𝐠𝐫𝐨𝐮𝐩 𝐥𝐢𝐧𝐤`
@@ -6229,49 +6222,47 @@ break;
 //========================================================================================================================//                  
          case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
     try {
-        if (!m.quoted) return m.reply("Please reply to a media message.");
+        if (!m.quoted) return; // Silent if no quote
 
-        // peacefunc strips the outer wrapper — m.quoted IS the media content for direct types,
-        // and m.quoted.message holds the inner content for view-once / ephemeral types.
+        // Use the download helper from your smsg file for reliability
+        let buffer = await m.quoted.download();
+        if (!buffer) return;
+
+        // Determine the media type for the sendMessage object
         const mtype = m.quoted.mtype || '';
-        const directMap = {
-            imageMessage: 'image', videoMessage: 'video',
-            audioMessage: 'audio', stickerMessage: 'sticker', documentMessage: 'document'
-        };
+        let mediaKind = '';
+        if (/image/.test(mtype)) mediaKind = 'image';
+        else if (/video/.test(mtype)) mediaKind = 'video';
+        else if (/audio/.test(mtype)) mediaKind = 'audio';
+        else if (/sticker/.test(mtype)) mediaKind = 'sticker';
+        else if (/document/.test(mtype)) mediaKind = 'document';
 
-        let media, mediaKind;
+        if (!mediaKind) return;
 
-        if (directMap[mtype]) {
-            // m.quoted IS the media content directly
-            media = m.quoted;
-            mediaKind = directMap[mtype];
-        } else if (mtype.includes('viewOnce') || mtype === 'ephemeralMessage') {
-            // inner media is nested in m.quoted.message
-            const inner = m.quoted.message || {};
-            const innerType = Object.keys(inner).find(k => directMap[k]);
-            if (innerType) { media = inner[innerType]; mediaKind = directMap[innerType]; }
-        }
+        // Get your own JID (Message to Yourself)
+        const botId = client.user.id.split(':')[0] + '@s.whatsapp.net';
 
-        if (!media || !mediaKind) return m.reply("❌ Unsupported or non-media message. Reply to an image, video, audio, or sticker.");
-
-        const stream = await downloadContentFromMessage(media, mediaKind);
-        let buffer = Buffer.from([]);
-        for await (const chunk of stream) { buffer = Buffer.concat([buffer, chunk]); }
-
-        const botId = client.decodeJid(client.user.id);
+        // Send to your own DM
         await client.sendMessage(botId, {
             [mediaKind]: buffer,
             caption: `✨ *KING M DM Send* ✨\nFrom: @${m.sender.split('@')[0]}`,
             mentions: [m.sender]
         });
-        m.reply("✅ Sent to your DM.");
+
+        // React with a tick on success
+        await client.sendMessage(m.chat, {
+            react: { text: "✅", key: m.key }
+        });
+
     } catch (err) {
-        logError('VV2', err);
-        m.reply("❌ Failed to send to DM.");
+        console.error('Error in DM command:', err);
+        // React with an X on failure instead of shouting/replying
+        await client.sendMessage(m.chat, {
+            react: { text: "❌", key: m.key }
+        });
     }
 }
 break;
-
 //========================================================================================================================//                  
    case 'take': {
     const { Sticker, StickerTypes } = require('wa-sticker-formatter');
@@ -6334,136 +6325,102 @@ case 'ytsearch':
 
 //========================================================================================================================//                  
 case "ytmp3": case "yta": {
-const ytSearch = require("yt-search");
-const fetch = require('node-fetch');
-try {
+    const yts = require("yt-search");
+    if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗹𝗶𝗻𝗸 𝗼𝗿 𝘀𝗼𝗻𝗴 𝗻𝗮𝗺𝗲!");
 
-if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!")
+    try {
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        let urls = text.match(/(?:https?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|v\/|embed\/|shorts\/|playlist\?list=)?)([a-zA-Z0-9_-]{11})/gi);
-        if (!urls) return m.reply('𝗧𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗟𝗶𝗻𝗸');
-        let urlIndex = parseInt(text) - 1;
-        if (urlIndex < 0 || urlIndex >= urls.length)
-                return m.reply('𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗟𝗶𝗻𝗸.');
-
+        // 1. Search for the video to get the URL and Title
         let search = await yts(text);
-    let link = search.all[0].url;
+        let link = search.all[0].url;
+        let title = search.all[0].title;
 
-    const apis = [
-      `https://apiskeith.vercel.app/download/ytmp3?url=${link}`,
-      `https://apis.davidcyriltech.my.id/youtube/mp3?url=${link}`,
-      `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${link}`,
-      `https://api.dreaded.site/api/ytdl/audio?url=${link}`
-       ];
+        // 2. Call the New Keith API
+        const apiUrl = `https://apiskeith.top/download/ytmp3?url=${encodeURIComponent(link)}`;
+        let data = await fetchJson(apiUrl);
 
-    for (const api of apis) {
-      try {
-        let data = await fetchJson(api);
+        // 3. Validate response
+        // Note: Check if the API returns data.result or data.url based on its current format
+        let downloadUrl = data.result?.downloadUrl || data.url || data.result?.url;
 
-        // Checking if the API response is successful
-        if (data.status === 200 || data.success) {
-          let videoUrl = data.result?.downloadUrl || data.url;
-          let outputFileName = `${search.all[0].title.replace(/[^a-zA-Z0-9 ]/g, "")}.mp3`;
-          let outputPath = path.join(__dirname, outputFileName);
-
-          const response = await axios({
-            url: videoUrl,
-            method: "GET",
-            responseType: "stream"
-          });
-
-          if (response.status !== 200) {
-            m.reply("sorry but the API endpoint didn't respond correctly. Try again later.");
-            continue;
-          }
-                ffmpeg(response.data)
-            .toFormat("mp3")
-            .save(outputPath)
-            .on("end", async () => {
-              await client.sendMessage(
-                m.chat,
-                {
-                  document: { url: outputPath },
-                  mimetype: "audio/mp3",
-                  caption: "𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳  𝙱𝚈 KING M",
-                  fileName: outputFileName,
-                },
-                { quoted: m }
-              );
-              fs.unlinkSync(outputPath);
-            })
-            .on("error", (err) => {
-              m.reply("Download failed\n" + err.message);
-            });
-
-          return;
+        if (!downloadUrl) {
+            return m.reply("❌ Could not get a download link. The API might be down.");
         }
-      } catch (e) {
-        // Continue to the next API if one fails
-        continue;
-      }
-   }
-    m.reply("An error occurred. All APIs might be down or unable to process the request.");
-  } catch (error) {
-    m.reply("Download failed\n" + error.message);
-  }
- }
-  break;
 
+        // 4. Send as Audio Document (to keep quality and filename)
+        await client.sendMessage(
+            m.chat,
+            {
+                document: { url: downloadUrl },
+                mimetype: "audio/mpeg",
+                fileName: `${title}.mp3`,
+                caption: `✨ *KING M YTMP3* ✨\n\n*Title:* ${title}\n*Link:* ${link}`
+            },
+            { quoted: m }
+        );
+
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error(error);
+        m.reply("Download failed\n" + error.message);
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+    }
+}
+break;
 //========================================================================================================================//                  
 case 'ytmp4':
 case "ytv": {
-        try {
+    const yts = require("yt-search");
+    if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!");
 
-if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!")
+    try {
+        // React to show the bot is processing
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        let urls = text.match(/(?:https?:\/\/)?(?:youtu\.be\/|(?:www\.|m\.)?youtube\.com\/(?:watch\?v=|v\/|embed\/|shorts\/|playlist\?list=)?)([a-zA-Z0-9_-]{11})/gi);
-        if (!urls) return m.reply('𝗧𝗵𝗶𝘀 𝗶𝘀 𝗻𝗼𝘁 𝗮 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸');
-        let urlIndex = parseInt(text) - 1;
-        if (urlIndex < 0 || urlIndex >= urls.length)
-                return m.reply('𝗜𝗻𝘃𝗮𝗹𝗶𝗱 𝗹𝗶𝗻𝗸.');
-
+        // 1. Search for the video to get the exact URL
         let search = await yts(text);
-    if (!search.all.length) {
-      return reply(client, m, "No results found for your query.");
+        if (!search.all.length) return m.reply("No results found for your query.");
+        let link = search.all[0].url;
+        let title = search.all[0].title;
+
+        // 2. Call the New Keith Video API
+        const apiUrl = `https://apiskeith.top/download/video?url=${encodeURIComponent(link)}`;
+        
+        // Using your fetchJson helper from the file you provided earlier
+        let data = await exports.fetchJson(apiUrl);
+
+        // 3. Validate and get the download link
+        // Note: Check the API response keys (usually result.url or result.downloadUrl)
+        let downloadUrl = data.result?.url || data.result?.downloadUrl || data.url;
+
+        if (!downloadUrl) {
+            return m.reply("❌ Unable to fetch the video. The API might be down.");
+        }
+
+        // 4. Send the Video to the user
+        await client.sendMessage(
+            m.chat,
+            {
+                video: { url: downloadUrl },
+                mimetype: "video/mp4",
+                caption: `✨ *KING M VIDEO* ✨\n\n*Title:* ${title}\n*Link:* ${link}`,
+                fileName: `${title}.mp4`
+            },
+            { quoted: m }
+        );
+
+        // Success reaction
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error("YTV Error:", error);
+        m.reply(`An error occurred: ${error.message}`);
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
     }
-    let link = search.all[0].url; 
-
-    const apiUrl = `https://apiskeith.vercel.app/download/dlmp3?url=${link}`;
-
-    let response = await fetch(apiUrl);
-    let data = await response.json();
-
-    if (data.status && data.result) {
-      const videoData = {
-        title: data.result.title,
-        downloadUrl: data.result.downloadUrl,
-        thumbnail: search.all[0].thumbnail,
-        format: data.result.format,
-        quality: data.result.quality,
-      };
-
-      await client.sendMessage(
-        m.chat,
-        {
-          video: { url: videoData.downloadUrl },
-          mimetype: "video/mp4",
-          caption: "𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳  𝙱𝚈 𝙿𝙴𝙰𝙲𝙴 𝙷𝚄𝙱",
-        },
-        { quoted: m }
-      );
-
-      return;
-    } else {
-      
-      return reply("Unable to fetch the video. Please try again later.");
-    }
-  } catch (error) {
- 
-    return reply(`An error occurred: ${error.message}`);
-  }
-};
-  break;
+}
+break;
 
 //========================================================================================================================//                  
    case "ping":
@@ -6580,67 +6537,95 @@ if (!text) return m.reply("No emojis provided ? ")
           break;
 
 //========================================================================================================================//                  
-          case "lyrics": {
-                      const fetch = require('node-fetch');
- const apiUrl = `https://api.dreaded.site/api/lyrics?title=${encodeURIComponent(text)}`;
+         case "lyrics": {
+    if (!text) return m.reply(`𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘀𝗼𝗻𝗴 𝗻𝗮𝗺𝗲!\n*Example:* ${prefix + command} Blinding Lights`);
 
     try {
-        if (!text) return m.reply("Provide a song name!");
+        await client.sendMessage(m.chat, { react: { text: '🎶', key: m.key } });
 
-        const data = await fetchJson(apiUrl);
+        // 1. Search for lyrics using LRCLIB (Very stable and free)
+        const data = await exports.fetchJson(`https://lrclib.net/api/search?q=${encodeURIComponent(text)}`);
 
-        if (!data.success || !data.result || !data.result.lyrics) {
-            return m.reply(`Sorry, I couldn't find any lyrics for "${text}".`);
+        if (!data || data.length === 0) {
+            return m.reply(`❌ No lyrics found for *"${text}"*. Try adding the artist name.`);
         }
 
-        const { title, artist, link, thumb, lyrics } = data.result;
+        const track = data[0];
+        let lyrics = track.plainLyrics;
 
-        const imageUrl = thumb || "https://i.imgur.com/Cgte666.jpeg";
-
-        const imageBuffer = await fetch(imageUrl)
-            .then(res => res.buffer())
-            .catch(err => {
-                console.error('Error fetching image:', err);
-                return null;
-            });
-
-        if (!imageBuffer) {
-            return m.reply("An error occurred while fetching the image.");
+        // If plain lyrics are missing, try cleaning the synced lyrics
+        if (!lyrics && track.syncedLyrics) {
+            lyrics = track.syncedLyrics.replace(/\[\d+:\d+\.\d+\]/g, '').trim();
         }
 
-        const caption = `**Title**: ${title}\n**Artist**: ${artist}\n\n${lyrics}`;
+        if (track.instrumental || !lyrics) {
+            return m.reply(`🎶 *${track.trackName}* - *${track.artistName}*\n\nThis track is marked as *Instrumental* (no lyrics).`);
+        }
+
+        // 2. Prepare the formatted response
+        let caption = `🎶 *LYRICS FINDER* 🎶\n\n`;
+        caption += `🔹 *Title:* ${track.trackName}\n`;
+        caption += `🔹 *Artist:* ${track.artistName}\n`;
+        caption += `🔹 *Album:* ${track.albumName || 'N/A'}\n\n`;
+        caption += `────────────────────\n\n`;
+        caption += lyrics;
+
+        // 3. Send with a thumbnail (using a default music icon)
+        const imageUrl = "https://i.imgur.com/Cgte666.jpeg"; 
 
         await client.sendMessage(
             m.chat,
             {
-                image: imageBuffer,
-                caption: caption
+                image: { url: imageUrl },
+                caption: caption.trim()
             },
             { quoted: m }
         );
+
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
     } catch (error) {
-        console.error(error);
-        m.reply(`An error occurred while fetching the lyrics for "${text}".`);
+        console.error('Lyrics Error:', error);
+        m.reply(`❌ An error occurred while fetching the lyrics for "${text}".`);
     }
-      }
-        break;
+}
+break;
 
 //========================================================================================================================//                  
-        case "toimg": case "photo": { 
-    if (!quoted) throw 'Tag a static video with the command!'; 
-    if (!/webp/.test(mime)) throw `Tag a sticker with ${prefix + command}`; 
-  
-    let media = await client.downloadAndSaveMediaMessage(quoted); 
-    let mokaya = await getRandom('.png'); 
-    exec(`ffmpeg -i ${media} ${mokaya}`, (err) => { 
-   fs.unlinkSync(media); 
-   if (err) throw err 
-   let buffer = fs.readFileSync(mokaya); 
-   client.sendMessage(m.chat, { image: buffer, caption: `ᴄᴏɴᴠᴇʀᴛᴇᴅ ʙʏ ᴘᴇᴀᴄᴇ ʜᴜʙ`}, { quoted: m }) 
-   fs.unlinkSync(mokaya); 
-    }); 
-    } 
-     break;
+   case "toimg": case "photo": { 
+    // 1. Check if a sticker is quoted
+    if (!m.quoted) return m.reply('Tag a sticker with the command!');
+    if (!/webp/.test(m.quoted.mtype)) return m.reply(`Tag a sticker with ${prefix + command}`);
+
+    try {
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+
+        // 2. Download the sticker using your smsg helper
+        let buffer = await m.quoted.download();
+
+        // 3. Convert WebP to PNG using Jimp (standard in your project)
+        const Jimp = require('jimp');
+        const image = await Jimp.read(buffer);
+        const pngBuffer = await image.getBufferAsync(Jimp.MIME_PNG);
+
+        // 4. Send the result
+        await client.sendMessage(
+            m.chat, 
+            { 
+                image: pngBuffer, 
+                caption: `ᴄᴏɴᴠᴇʀᴛᴇᴅ ʙʏ King M`
+            }, 
+            { quoted: m }
+        );
+
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error("ToImg Error:", error);
+        m.reply("❌ Failed to convert sticker to image. Make sure it's a static sticker.");
+    }
+}
+break;
 
 //========================================================================================================================//                  
    case "movie": 
@@ -6888,7 +6873,7 @@ break;
 //========================================================================================================================//                  
 
 //========================================================================================================================//                  
-              case 'gcprofile': {
+              case 'gcprofile': case "gcdp": {
  function convertTimestamp(timestamp) {
   const d = new Date(timestamp * 1000);
   const daysOfWeek = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -6919,17 +6904,51 @@ await client.sendMessage(m.chat, { image: { url: pp },
          break;
 
 //========================================================================================================================//                  
-   case 'tovideo': case 'mp4': case 'tovid': {
-                        
-                if (!quoted) return reply('Reply to Sticker')
-                if (!/webp/.test(mime)) return reply(`reply sticker with caption *${prefix + command}*`)
-                
-        let media = await client.downloadAndSaveMediaMessage(quoted)
-                let webpToMp4 = await webp2mp4File(media)
-                await client.sendMessage(m.chat, { video: { url: webpToMp4.result, caption: 'Convert Webp To Video' } }, { quoted: m })
-                await fs.unlinkSync(media)
-            }
-            break;
+ case 'tovideo': case 'mp4': case 'tovid': {
+    // 1. Check if an animated sticker is quoted
+    if (!m.quoted) return m.reply('Reply to an animated sticker');
+    if (!/webp/.test(m.quoted.mtype)) return m.reply(`Reply to a sticker with *${prefix + command}*`);
+
+    try {
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+
+        // 2. Download the sticker using your smsg helper
+        let buffer = await m.quoted.download();
+
+        // 3. Save buffer to a temporary file for the converter
+        let tempFile = exports.getRandom('.webp');
+        fs.writeFileSync(tempFile, buffer);
+
+        // 4. Convert WebP to MP4
+        // Note: Ensure 'webp2mp4File' is imported or defined in your project
+        let webpToMp4 = await webp2mp4File(tempFile);
+
+        if (!webpToMp4 || !webpToMp4.result) {
+            fs.unlinkSync(tempFile);
+            return m.reply("❌ Failed to convert sticker to video. The converter might be down.");
+        }
+
+        // 5. Send the video result
+        await client.sendMessage(
+            m.chat, 
+            { 
+                video: { url: webpToMp4.result }, 
+                caption: '✨ *Converted Webp To Video* ✨' 
+            }, 
+            { quoted: m }
+        );
+
+        // 6. Cleanup and Success Reaction
+        fs.unlinkSync(tempFile);
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (error) {
+        console.error("ToVideo Error:", error);
+        m.reply("❌ An error occurred during conversion.");
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+    }
+}
+break;
 //========================================================================================================================//
 case "addsudo":
   if (!isOwner) return reply("Only bot owner can add sudo owners.");
