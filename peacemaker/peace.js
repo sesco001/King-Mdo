@@ -6917,27 +6917,29 @@ case "listsudo":
   }
   break;
 //========================================================================================================================//        
-        default: {
-          if (cmd && budy.toLowerCase() != undefined) {
-            if (m.chat.endsWith("broadcast")) return;
-            if (m.isBaileys) return;
-            if (!budy.toLowerCase()) return;
-            logError(`${prefix}${command}`);
-          }
+ default: {
+            // FIX: Use safe navigation to check budy and command
+            const safeBudy = (budy || "").toLowerCase();
+            if (cmd && safeBudy !== "") {
+                if (m.chat.endsWith("broadcast")) return;
+                if (m.isBaileys) return;
+                logError(`${prefix}${command}`);
+            }
         }
-      }
-    }
+      } // end switch
+    } // end if (cmd)
   } catch (err) {
-    // Only reply with errors if the sender is the owner/sudo — prevents spamming groups
-    // when other bots trigger our commands and get permission errors back
-    if (Owner || !m.isGroup) {
+    // FIX: Define a local check for the catch block since 'Owner' might be lost
+    const botNumber = client.user.id.split(':')[0] + '@s.whatsapp.net';
+    const isBotOwner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(m.sender) || m.sender === botNumber;
+
+    if (isBotOwner || !m.isGroup) {
       m.reply(util.format(err));
     } else {
       console.log(chalk.red('[ERR]'), util.format(err));
     }
   }
 };
-
 let file = require.resolve(__filename);
 fs.watchFile(file, () => {
   fs.unwatchFile(file);
