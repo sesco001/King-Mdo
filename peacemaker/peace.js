@@ -113,7 +113,7 @@ const {
     let text = (q = args.join(" "));
     
     // FIX 2: Define 'Owner' immediately to prevent line 6927 ReferenceError
-    const { owner } = require("../set.js"); // Ensure correct path to your settings
+    
     const Owner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(m.sender) || itsMe;
 
     const arg = (budy || "").trim().substring((budy || "").indexOf(" ") + 1);
