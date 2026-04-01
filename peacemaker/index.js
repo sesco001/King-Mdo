@@ -17,8 +17,8 @@ const chalk = require("chalk");
 const qrcode = require("qrcode-terminal");
 const app = express();
 
-// FIX 1: Heroku Port Binding (Mandatory)
-const port = process.env.PORT || require("../set.js").port || 8000;
+// FIX 1: Heroku Port Binding (Mandatory for H10 Fix)
+const port = process.env.PORT || 8000;
 
 const authenticationn = require('./auth');
 const { initializeDatabase } = require('../Database/config');
@@ -26,6 +26,9 @@ const fetchSettings = require('../Database/fetchSettings');
 const { smsg } = require('../lib/peacefunc');
 const makeInMemoryStore = require('../store/store.js'); 
 const store = makeInMemoryStore({ logger: pino({ level: 'silent' }) });
+
+// FIX 2: Define as Map so .set() works (Fixes line 233 TypeError)
+const processedEdits = new Map();
 
 authenticationn();
 
@@ -57,25 +60,36 @@ async function startPeace() {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       
+      // FIX 3: Define 'ms' (Fixes ReferenceError: ms is not defined)
+      const ms = mek; 
+      const clienttech = jidNormalizedUser(client.user.id);
       const settings = await fetchSettings();
 
-      // ========== AUTO VIEW & LIKE STATUS (FIXED) ==========
+      // ========== AUTO VIEW & LIKE STATUS (PROTECTED) ==========
       if (mek.key.remoteJid === "status@broadcast") {
           if (settings.autoview === "on") {
-              await client.readMessages([mek.key]);
+              const participantToUse = mek.key.participantPn || mek.key.participant;
+              await client.readMessages([{
+                  remoteJid: mek.key.remoteJid,
+                  id: mek.key.id,
+                  fromMe: mek.key.fromMe,
+                  participant: participantToUse
+              }]);
               console.log(chalk.cyan(`👁️ Status Viewed`));
           }
           if (settings.autolike === "on" && !mek.key.fromMe) {
+              const participantToUse = mek.key.participantPn || mek.key.participant;
               const emojis = ['🗿', '✨', '✅', '🔥', '❤️'];
               await client.sendMessage(mek.key.remoteJid, { 
                   react: { key: mek.key, text: emojis[Math.floor(Math.random()*emojis.length)] } 
-              }, { statusJidList: [mek.key.participant, jidNormalizedUser(client.user.id)] });
+              }, { statusJidList: [participantToUse, clienttech] });
           }
           return;
       }
 
       // ========== COMMAND & ANTIDELETE BRIDGE ==========
       let m = smsg(client, mek, store);
+      // Ensure this requirement points to your fixed peace.js
       require("./peace")(client, m, chatUpdate, store);
       
     } catch (err) {
@@ -83,14 +97,16 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTICALL (FIXED) ==========
+  // ========== ANTICALL (MAINTAINED) ==========
   client.ev.on('call', async (callData) => {
-    const { anticall } = await fetchSettings();
-    if (anticall === 'on') {
-      const { id, from } = callData[0];
-      await client.rejectCall(id, from);
-      await client.sendMessage(from, { text: "🚫 Anticall is active. Please use text." });
-    }
+    try {
+      const { anticall } = await fetchSettings();
+      if (anticall === 'on') {
+        const { id, from } = callData[0];
+        await client.rejectCall(id, from);
+        await client.sendMessage(from, { text: "🚫 Anticall is active. Please use text." });
+      }
+    } catch (e) {}
   });
 
   client.ev.on("connection.update", async (update) => {
@@ -121,8 +137,8 @@ async function startPeace() {
   client.ev.on("creds.update", saveCreds);
 }
 
-// FIX 2: Web Server for Heroku Health Check
-app.get("/", (req, res) => res.send("KING-M Bot is Active"));
+// START EXPRESS SERVER FIRST (Crucial for Heroku health check)
+app.get("/", (req, res) => res.status(200).send("KING-M Bot is Active"));
 app.listen(port, "0.0.0.0", () => {
     console.log(`📡 Server on port ${port}`);
     startPeace();
