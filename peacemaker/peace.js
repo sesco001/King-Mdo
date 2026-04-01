@@ -1311,7 +1311,7 @@ break;             //Status mention
 // ================== ANTI-GROUP MENTION COMMAND ==================
 case 'antistatus':
         case 'antigroupmention': 
-        case 'antigm: {
+        case 'antigm': {
     if (!m.isGroup) return m.reply("This command is only for groups.");
     if (!isAdmin && !Owner) return m.reply("Admin only command.");
     if (!isBotAdmin) return m.reply("I need to be an admin to enforce this.");
