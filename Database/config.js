@@ -20,7 +20,7 @@ const defaultSettings = {
   antitag: 'on',
   antibot: 'off',
   anticall: 'off',
-  antistatusmention: 'off', 
+  antistatus: 'off', 
   antiforeign: 'off',
   badword: 'off',
   gptdm: 'off',
