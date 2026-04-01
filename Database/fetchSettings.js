@@ -24,7 +24,7 @@ async function fetchSettings() {
     gptdm: data.gptdm, 
     anticall: data.anticall, 
     antiedit: data.antiedit,
-    antistatusmention: data.antistatusmention,
+    antistatus: data.antistatus,
     antistatuslink: data.antistatuslink,
     menuTitle: data.menuTitle,
     antisticker: data.antisticker,
