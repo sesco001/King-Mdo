@@ -6146,46 +6146,47 @@ case "retrieve": {
 break;
 //========================================================================================================================//
 //========================================================================================================================//                  
-         case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+       case "alaa": case "wiih": case "waah": case "ehee": case "vv2": case "mmmh": {
+    if (!m.quoted) return reply("⚠️ Quote a *View Once* image or video.");
     try {
-        if (!m.quoted) return; // Silent if no quote
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        // Use the download helper from your smsg file for reliability
-        let buffer = await m.quoted.download();
-        if (!buffer) return;
-
-        // Determine the media type for the sendMessage object
         const mtype = m.quoted.mtype || '';
-        let mediaKind = '';
-        if (/image/.test(mtype)) mediaKind = 'image';
-        else if (/video/.test(mtype)) mediaKind = 'video';
-        else if (/audio/.test(mtype)) mediaKind = 'audio';
-        else if (/sticker/.test(mtype)) mediaKind = 'sticker';
-        else if (/document/.test(mtype)) mediaKind = 'document';
+        let mediaData, isImg;
 
-        if (!mediaKind) return;
+        // Same robust media extraction as your working VV
+        if (mtype === 'viewOnceMessageV2' || mtype === 'viewOnceMessageV2Extension') {
+            const inner = m.quoted.message || {};
+            if (inner.imageMessage) { mediaData = inner.imageMessage; isImg = true; }
+            else if (inner.videoMessage) { mediaData = inner.videoMessage; isImg = false; }
+        } else if (mtype === 'imageMessage') {
+            mediaData = m.quoted; isImg = true;
+        } else if (mtype === 'videoMessage') {
+            mediaData = m.quoted; isImg = false;
+        }
 
-        // Get your own JID (Message to Yourself)
-        const botId = client.user.id.split(':')[0] + '@s.whatsapp.net';
+        if (!mediaData) return reply("❌ No media found.");
 
-        // Send to your own DM
-        await client.sendMessage(botId, {
-            [mediaKind]: buffer,
-            caption: `✨ *KING M DM Send* ✨\nFrom: @${m.sender.split('@')[0]}`,
+        // Same reliable download method as your working VV
+        const stream2 = await downloadContentFromMessage(mediaData, isImg ? 'image' : 'video');
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream2) { buffer = Buffer.concat([buffer, chunk]); }
+
+        const caption = `✨ *KING M VV2 BYPASS* ✨\n\n👤 *From:* @${m.sender.split('@')[0]}\n📝 *Caption:* ${mediaData.caption || "None"}`;
+
+        // Send to your own DM (client.user.id) instead of the group
+        await client.sendMessage(client.user.id.split(":")[0] + "@s.whatsapp.net", { 
+            [isImg ? 'image' : 'video']: buffer, 
+            caption,
             mentions: [m.sender]
         });
 
-        // React with a tick on success
-        await client.sendMessage(m.chat, {
-            react: { text: "✅", key: m.key }
-        });
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+        reply("_Bypass sent to your DM!_");
 
-    } catch (err) {
-        console.error('Error in DM command:', err);
-        // React with an X on failure instead of shouting/replying
-        await client.sendMessage(m.chat, {
-            react: { text: "❌", key: m.key }
-        });
+    } catch (error) {
+        logError('VV2', error);
+        reply("❌ Failed to bypass. Media may have expired.");
     }
 }
 break;
