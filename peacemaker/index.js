@@ -7,7 +7,7 @@ const {
   jidDecode,
   proto,
   getContentType,
-  jidNormalizedUser // Added this as required by your logic
+  jidNormalizedUser
 } = require("@whiskeysockets/baileys");
 
 const pino = require("pino");
@@ -26,7 +26,7 @@ const _ = require("lodash");
 const EventEmitter = require('events');
 EventEmitter.defaultMaxListeners = 50;
 
-// Suppress noisy Baileys/libsignal internal console output
+// Suppress noisy console logs
 const _origLog = console.log;
 const _origErr = console.error;
 const _noisePatterns = ['Closing session', 'Closing open session', 'SessionEntry', '_chains', 'registrationId', 'currentRatchet', 'ephemeralKeyPair', 'indexInfo', 'remoteIdentityKey', 'rootKey', 'lastRemoteEphemeral'];
@@ -35,22 +35,18 @@ console.log = (...args) => {
   if (_noisePatterns.some(p => msg.includes(p))) return;
   _origLog(...args);
 };
-console.error = (...args) => {
-  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
-  if (_noisePatterns.some(p => msg.includes(p))) return;
-  _origErr(...args);
-};
 
 let lastTextTime = 0;
 const messageDelay = 3000;
+const EDIT_COOLDOWN = 60000; // Define missing constant
 const Events = require('../peacemaker/events');
 const authenticationn = require('../peacemaker/auth');
 const { initializeDatabase } = require('../Database/config');
 const fetchSettings = require('../Database/fetchSettings');
-const PhoneNumber = require("awesome-phonenumber");
 const { imageToWebp, videoToWebp, writeExifImg, writeExifVid } = require('../lib/peaceexif');
 const { smsg, sleep } = require('../lib/peacefunc');
-const { port } = require("../set.js");
+// FIX: Dynamic port for Heroku H10 fix
+const port = process.env.PORT || require("../set.js").port || 8000;
 const makeInMemoryStore = require('../store/store.js'); 
 const store = makeInMemoryStore({ logger: logger.child({ stream: 'store' }) });
 const color = (text, color) => {
@@ -60,7 +56,6 @@ const color = (text, color) => {
 authenticationn();
 
 const processedEdits = new Set();
-const reactedStatuses = new Set();
 
 async function startPeace() { 
   let autobio, autolike, autoview, mode, prefix, anticall, antiedit;
@@ -111,58 +106,39 @@ async function startPeace() {
       let mek = chatUpdate.messages[0];
       if (!mek.message) return;
       
-      const ms = mek; // Alias to match your logic
+      const ms = mek;
       const clienttech = jidNormalizedUser(client.user.id);
-      const fromJid = ms.key.participant || ms.key.remoteJid;
 
-      ms.message = getContentType(ms.message) === 'ephemeralMessage'
-        ? ms.message.ephemeralMessage.message
-        : ms.message;
-
-      // ========== AUTO VIEW & LIKE STATUS (YOUR EXACT LOGIC) ==========
+      // ========== AUTO VIEW & LIKE STATUS (PROTECTED) ==========
       if (ms.key.remoteJid === "status@broadcast") {
         try {
-          // Auto View Status
           if (autoview === "on") {
             const participantToUse = ms.key.participantPn || ms.key.participant;
-            const readKey = {
+            await client.readMessages([{
               remoteJid: ms.key.remoteJid,
               id: ms.key.id,
               fromMe: ms.key.fromMe,
               participant: participantToUse
-            };
-            
-            await client.readMessages([readKey]);
-            console.log(chalk.cyan(`👁️ Viewed: ${participantToUse}`));
+            }]);
           }
 
-          // Auto Like Status
           if (autolike === "on" && ms.key.participant && !ms.key.fromMe) {
             const participantToUse = ms.key.participantPn || ms.key.participant;
-            const reactionKey = {
-              remoteJid: ms.key.remoteJid,
-              id: ms.key.id,
-              fromMe: ms.key.fromMe,
-              participant: participantToUse
-            };
-            
             const emojis = ['🗿', '⌚️', '💠', '✨', '❤️', '🔥', '💯', '🌟', '✅'];
             const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
-            
-            await client.sendMessage(
-              ms.key.remoteJid,
-              { react: { key: reactionKey, text: randomEmoji } },
+            await client.sendMessage(ms.key.remoteJid,
+              { react: { key: ms.key, text: randomEmoji } },
               { statusJidList: [participantToUse, clienttech] }
             );
-            console.log(chalk.green(`✅ Liked: ${participantToUse}`));
           }
-          return; // Stop here for statuses
+          return; 
         } catch (error) {
-          console.error("Error handling status broadcast:", error);
+          console.error("Error handling status:", error);
         }
       }
       
-      // Mode Check for Commands
+      // ========== COMMAND BRIDGE ==========
+      // Check mode before requiring peace.js to save resources
       const isMe = mek.key.fromMe;
       if (mode === 'private' && !isMe) return;
       
@@ -175,96 +151,55 @@ async function startPeace() {
     }
   });
 
-  // ========== ANTI-EDIT & ANTI-CALL (MAINTAINED) ==========
+  // ========== ANTI-EDIT (PROTECTED) ==========
   client.ev.on('messages.update', async (messageUpdates) => {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
       if (currentAntiedit === 'off') return;
 
       const now = Date.now();
-      
       for (const update of messageUpdates) {
         const { key, update: { message } } = update;
         if (!key?.id || !message) continue;
 
         const editId = `${key.id}-${key.remoteJid}`;
-        
-        // Skip if recently processed
-        if (processedEdits.has(editId)) {
-          const [timestamp] = processedEdits.get(editId);
-          if (now - timestamp < EDIT_COOLDOWN) continue;
-        }
-
         const chat = key.remoteJid;
-        const isGroup = chat.endsWith('@g.us');
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
 
-        // Get both messages properly
         const originalMsg = await store.loadMessage(chat, key.id) || {};
         const sender = key.participant || key.remoteJid;
-        const senderName = await client.getName(sender);
 
-        // Enhanced content extractor
         const getContent = (msg) => {
           if (!msg) return '[Deleted]';
           const type = Object.keys(msg)[0];
           const content = msg[type];
-          
           switch(type) {
-            case 'conversation': 
-              return content;
-            case 'extendedTextMessage': 
-              return content.text + 
-                    (content.contextInfo?.quotedMessage ? ' (with quoted message)' : '');
-            case 'imageMessage': 
-              return `🖼️ ${content.caption || 'Image'}`;
-            case 'videoMessage': 
-              return `🎥 ${content.caption || 'Video'}`;
-            case 'documentMessage': 
-              return `📄 ${content.fileName || 'Document'}`;
-            default: 
-              return `[${type.replace('Message', '')}]`;
+            case 'conversation': return content;
+            case 'extendedTextMessage': return content.text;
+            case 'imageMessage': return `🖼️ ${content.caption || 'Image'}`;
+            case 'videoMessage': return `🎥 ${content.caption || 'Video'}`;
+            default: return `[${type.replace('Message', '')}]`;
           }
         };
 
         const originalContent = getContent(originalMsg.message);
         const editedContent = getContent(editedMsg);
 
-        // Only proceed if content actually changed
-        if (originalContent === editedContent) {
-          console.log(chalk.yellow(`[ANTIEDIT] No content change detected for ${editId}`));
-          continue;
-        }
+        if (originalContent === editedContent) continue;
 
         const notificationMessage = `*⚠️📌 KING M ᴀɴᴛɪᴇᴅɪᴛ 📌⚠️*\n\n` +
-                                 `👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n` +
-                                 `📄 *ᴏʀɪɢɪɴᴀʟ ᴍᴇssᴀɢᴇ:* ${originalContent}\n` +
-                                 `✏️ *ᴇᴅɪᴛᴇᴅ ᴍᴇssᴀɢᴇ:* ${editedContent}\n` +
-                                 `🧾 *ᴄʜᴀᴛ ᴛʏᴘᴇ:* ${isGroup ? 'Group' : 'DM'}`;
+                                     `👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n` +
+                                     `📄 *ᴏʀɪɢɪɴᴀʟ:* ${originalContent}\n` +
+                                     `✏️ *ᴇᴅɪᴛᴇᴅ:* ${editedContent}`;
 
         const sendTo = currentAntiedit === 'private' ? client.user.id : chat;
-        await client.sendMessage(sendTo, { 
-          text: notificationMessage,
-          mentions: [sender]
-        });
-
-        // Update tracking with timestamp
-        processedEdits.set(editId, [now, originalContent, editedContent]);
-        console.log(chalk.green(`[ANTIEDIT] Reported edit from ${senderName}`));
-      }
-
-      // Cleanup old entries
-      for (const [id, data] of processedEdits) {
-        if (now - data[0] > 60000) { // 1 minute retention
-          processedEdits.delete(id);
-        }
+        await client.sendMessage(sendTo, { text: notificationMessage, mentions: [sender] });
       }
     } catch (err) {
-      console.error(chalk.red('[ANTIEDIT ERROR]', err.stack));
+      console.error(chalk.red('[ANTIEDIT ERROR]'), err.message);
     }
   });
-
 
   client.ev.on('call', async (callData) => {
     const { anticall: dbAnticall } = await fetchSettings();
@@ -273,71 +208,27 @@ async function startPeace() {
       const callerId = callData[0]?.from;
       if (callId && callerId) {
         await client.rejectCall(callId, callerId);
-        if (Date.now() - lastTextTime >= messageDelay) {
-          await client.sendMessage(callerId, { text: "🚫 Anticall is active. Only text messages are allowed." });
-          lastTextTime = Date.now();
-        }
+        await client.sendMessage(callerId, { text: "🚫 Anticall is active." });
       }
     }
   });
 
   client.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      console.log(chalk.yellow("\n📱 Scan this QR code to connect KING-M to WhatsApp:\n"));
-      qrcode.generate(qr, { small: true });
-    }
+    if (qr) qrcode.generate(qr, { small: true });
+    
     if (connection === "close") {
       let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      if (reason !== DisconnectReason.loggedOut) {
-        console.log(`Connection closed: ${reason}. Reconnecting...`);
-        startPeace();
-      }
-    }else if (connection === "open") {
+      if (reason !== DisconnectReason.loggedOut) startPeace();
+    } else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-
       const connText = `🔶 *KING MD ꜱᴛᴀᴛᴜꜱ*\n` +
               `───────────────────────\n` +
               `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
               `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
-              `⏰  ᴛɪᴍᴇ » ${new Date().toLocaleTimeString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                hour: '2-digit', 
-                minute: '2-digit', 
-                hour12: false 
-              })} | ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                month: '2-digit',
-                day: '2-digit',
-                year: 'numeric'
-              })}\n` +
-              `📅  ᴅᴀʏ » ${new Date().toLocaleDateString('en-US', { 
-                timeZone: 'Africa/Nairobi',
-                weekday: 'long' 
-              })}\n` +
-              `───────────────────────\n` +
               `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
-
       client.sendMessage(client.user.id, { text: connText }).catch(() => {});
-}
-      // Auto-follow KING-M newsletter and join support group on every (re)connect
-      setTimeout(async () => {
-        try {
-          await client.newsletterFollow('120363425782251560@newsletter');
-          console.log(color('[KING-M] Auto-followed newsletter', 'green'));
-        } catch (e) {
-          console.log('[KING-M] Newsletter follow skipped:', e.message);
-        }
-        try {
-          const link = 'https://chat.whatsapp.com/CjBNEKIJq6VE2vrJLDSQ2Z';
-          const code = link.split('/').pop();
-          await client.groupAcceptInvite(code);
-          console.log(color('[KING-M] Auto-joined support group', 'green'));
-        } catch (e) {
-          console.log('[KING-M] Group join skipped (already member or error):', e.message);
-        }
-      }, 5000); // 5-second delay so connection is fully stable first
     }
   });
 
@@ -347,6 +238,7 @@ async function startPeace() {
 
 app.use(express.static(path.join(__dirname, '../pixel')));
 app.get("/", (req, res) => res.sendFile(path.join(__dirname, '../pixel/index.html')));
+// FIX: Using dynamic port ensures Heroku won't kill the app
 app.listen(port, "0.0.0.0", () => console.log(`📡 Server on port ${port}`));
 
 startPeace();
