@@ -216,128 +216,19 @@ function handleIncomingMessage(message) {
           
           // ================== ANTIDELETE FUNCTION ==================
           // ================== SIMPLE ANTIDELETE SYSTEM ==================
+// ================== FIXED ANTIDELETE SYSTEM ==================
 const messageStore = new Map();
 
+// Helper to store only valid messages (ignore protocol/deletion msgs)
 function storeIncomingMessage(mek) {
-    if (!mek?.key?.id) return;
+    if (!mek?.key?.id || mek.message?.protocolMessage) return; // Don't store "Delete" notifications themselves
 
     messageStore.set(mek.key.id, mek);  
 
-    if (messageStore.size > 3000) {  
+    // Prevent Memory Leak: Keep only last 2000 messages
+    if (messageStore.size > 2000) {  
         const firstKey = messageStore.keys().next().value;  
         messageStore.delete(firstKey);  
-    }
-}
-
-async function handleDeletedMessage(client, mek, antideleteMode) {
-    try {
-        if (!mek?.message?.protocolMessage?.key?.id) return;
-
-        const deletedMsgId = mek.message.protocolMessage.key.id;  
-        const originalMessage = messageStore.get(deletedMsgId);  
-        if (!originalMessage) return;  
-
-        const remoteJid = mek.key.remoteJid;  
-        const botJid = client.user.id.split(":")[0] + "@s.whatsapp.net";  
-
-        const deletedBy = mek.participant || remoteJid;  
-        const sentBy = originalMessage.key.participant || originalMessage.key.remoteJid;  
-
-        if (deletedBy === botJid || sentBy === botJid) return;  
-
-        let targetJid;  
-        // Note: Ensure 'owner' is defined in your global scope/settings
-        if (antideleteMode === "private") {  
-            targetJid = owner[0].replace(/[^0-9]/g, '') + "@s.whatsapp.net";  
-        } else if (antideleteMode === "chat") {  
-            targetJid = remoteJid;  
-        } else return;  
-
-        const deletedByTag = `@${deletedBy.split('@')[0]}`; 
-        const sentByTag = `@${sentBy.split('@')[0]}`; 
-
-        const now = new Date();  
-        const deletedTime = now.toLocaleTimeString();  
-        const deletedDate = now.toLocaleDateString();  
-
-        let header = `🚨 KING M ANTIDELETE 🚨
-
-👤 Deleted By: ${deletedByTag}
-✉️ Sent By: ${sentByTag}
-📅 Date: ${deletedDate}
-⏰ Time: ${deletedTime}
-
-`;
-
-        const msg = originalMessage.message;  
-
-        if (msg?.conversation) {  
-            await client.sendMessage(targetJid, {  
-                text: header + "📝 Deleted Message:\n" + msg.conversation,  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.extendedTextMessage?.text) {  
-            await client.sendMessage(targetJid, {  
-                text: header + "📝 Deleted Message:\n" + msg.extendedTextMessage.text,  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.imageMessage) {  
-            const buffer = await client.downloadMediaMessage(originalMessage);  
-            await client.sendMessage(targetJid, {  
-                image: buffer,  
-                caption: header + "🖼️ Deleted Image\n" + (msg.imageMessage.caption || ""),  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.videoMessage) {  
-            const buffer = await client.downloadMediaMessage(originalMessage);  
-            await client.sendMessage(targetJid, {  
-                video: buffer,  
-                caption: header + "🎥 Deleted Video\n" + (msg.videoMessage.caption || ""),  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.audioMessage) {  
-            const buffer = await client.downloadMediaMessage(originalMessage);  
-            await client.sendMessage(targetJid, {  
-                audio: buffer,  
-                mimetype: "audio/mpeg",  
-                ptt: msg.audioMessage.ptt || false  
-            });  
-
-            await client.sendMessage(targetJid, {  
-                text: header + "🎧 Deleted Audio",  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.stickerMessage) {  
-            const buffer = await client.downloadMediaMessage(originalMessage);  
-            await client.sendMessage(targetJid, { sticker: buffer });  
-
-            await client.sendMessage(targetJid, {  
-                text: header + "🔖 Deleted Sticker",  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-        else if (msg?.documentMessage) {  
-            const buffer = await client.downloadMediaMessage(originalMessage);  
-            const doc = msg.documentMessage;  
-
-            await client.sendMessage(targetJid, {  
-                document: buffer,  
-                fileName: doc.fileName,  
-                mimetype: doc.mimetype,  
-                caption: header + `📄 *Deleted Document:* ${doc.fileName}`,  
-                mentions: [deletedBy, sentBy]  
-            });  
-        }  
-
-        messageStore.delete(deletedMsgId);  
-
-    } catch (err) {  
-        logError('AntiDelete', err);  
     }
 }
 
@@ -346,25 +237,35 @@ client.ev.on('messages.upsert', async ({ messages }) => {
         const mek = messages[0];
         if (!mek.message) return;
 
+        // 1. Check current Antidelete setting
         const antidelete = client.settings?.antidelete || "off";  
+        if (antidelete === "off") return;
 
-        if (antidelete !== "off") {  
-            if (  
-                mek.message?.protocolMessage &&  
-                mek.message.protocolMessage.type === 0  
-            ) {
-                // Skip delete notifications that arrived before bot started (reconnect flood)
-                const msgTime = (mek.messageTimestamp || 0) * 1000;
-                if (msgTime < BOT_START_TIME) return;
-                await handleDeletedMessage(client, mek, antidelete);  
-            }  
-            else {  
-                storeIncomingMessage(mek);  
-            }  
-        }  
+        // 2. Identify if this is a "Delete" event (Protocol Message Type 0)
+        const isDeleteNotify = mek.message?.protocolMessage && mek.message.protocolMessage.type === 0;
+
+        if (isDeleteNotify) {
+            const deletedMsgId = mek.message.protocolMessage.key.id;
+            const originalMessage = messageStore.get(deletedMsgId);
+
+            // Skip if we didn't capture the original or if it's too old
+            if (!originalMessage) return;
+            const msgTime = (mek.messageTimestamp || 0) * 1000;
+            if (msgTime < BOT_START_TIME) return;
+
+            // Trigger the retrieval and sending
+            await handleDeletedMessage(client, mek, antidelete);
+            
+            // CRITICAL: Remove from store after handling so it doesn't trigger again
+            messageStore.delete(deletedMsgId);
+        } 
+        else {
+            // 3. If it's a normal message, store it for future potential deletion
+            storeIncomingMessage(mek);
+        }
 
     } catch (err) {  
-        logError('Listener', err);  
+        logError('Antidelete-Listener', err);  
     }
 });
 //========================================================================================================================//
