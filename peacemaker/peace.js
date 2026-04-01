@@ -99,13 +99,24 @@ const {
 } = require('../Database/config');
 //========================================================================================================================//      
     const Heroku = require("heroku-client");  
-    const command = body.replace(prefix, "").trim().split(/ +/).shift().toLowerCase();
-    const args = body.trim().split(/ +/).slice(1);
+    
+    // FIX 1: Robust body handling to prevent .toString() and .replace() crashes
+    const messageBody = body || ""; 
+    const command = messageBody.startsWith(prefix) 
+        ? messageBody.replace(prefix, "").trim().split(/ +/).shift().toLowerCase() 
+        : "";
+
+    const args = messageBody.trim().split(/ +/).slice(1);
     const pushname = m.pushName || "No Name";
     const botNumber = await client.decodeJid(client.user.id);
-    const itsMe = m.sender == botNumber ? true : false;
+    const itsMe = m.sender == botNumber;
     let text = (q = args.join(" "));
-    const arg = budy.trim().substring(budy.indexOf(" ") + 1);
+    
+    // FIX 2: Define 'Owner' immediately to prevent line 6927 ReferenceError
+    const { owner } = require("../set.js"); // Ensure correct path to your settings
+    const Owner = owner.map((v) => v.replace(/[^0-9]/g, "") + "@s.whatsapp.net").includes(m.sender) || itsMe;
+
+    const arg = (budy || "").trim().substring((budy || "").indexOf(" ") + 1);
     const arg1 = arg.trim().substring(arg.indexOf(" ") + 1);
     m.isBaileys = m.id.startsWith("BAE5") && m.id.length === 16;
     const from = m.chat;
@@ -387,32 +398,26 @@ if (antisticker && antisticker !== 'off' && isSticker) {
 // Detects @status, @0, and the Group JID (the hidden tag-all method)
 //=========================== ANTI-STATUS MENTION LISTENER ===========================//
 if (m.isGroup && antistatus === 'on' && !isAdmin && !Owner && isBotAdmin) {
-    // Check if the message contains a status mention (tag-all)
     const isStatusTag = m.message?.groupStatusMentionMessage || 
                         m.msg?.contextInfo?.groupStatusMentionMessage ||
-                        (body && body.includes('@status'));
+                        messageBody.includes('@status');
 
     if (isStatusTag) {
         try {
-            // 1. Delete the message immediately
+            // Delete first
             await client.sendMessage(m.chat, {
-                delete: {
-                    remoteJid: m.chat,
-                    fromMe: false,
-                    id: m.key.id,
-                    participant: m.sender
-                }
+                delete: m.key
             });
 
-            // 2. Send the Warning
+            // Delay the reply slightly to avoid 429 rate-limiting
+            await sleep(1000); 
+
             await client.sendMessage(m.chat, {
-                text: `⚠️ *KING M ANTI-TAG* ⚠️\n\n@${m.sender.split('@')[0]}, tagging the entire group via Status Mention is strictly prohibited!\n\n*Action:* Message Deleted.`,
+                text: `⚠️ *ANTI-TAG* @${m.sender.split('@')[0]}, status tagging is prohibited!`,
                 mentions: [m.sender]
             });
-
-            console.log(`[ANTITAG] Deleted status mention from ${m.sender}`);
         } catch (err) {
-            console.error('Anti-Status Error:', err);
+            console.error('Anti-Status Error:', err.message);
         }
     }
 }
