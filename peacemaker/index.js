@@ -180,32 +180,91 @@ async function startPeace() {
     try {
       const { antiedit: currentAntiedit } = await fetchSettings();
       if (currentAntiedit === 'off') return;
+
+      const now = Date.now();
+      
       for (const update of messageUpdates) {
         const { key, update: { message } } = update;
         if (!key?.id || !message) continue;
-        const editId = `${key.id}-${key.remoteJid}`;
-        if (processedEdits.has(editId)) continue;
 
+        const editId = `${key.id}-${key.remoteJid}`;
+        
+        // Skip if recently processed
+        if (processedEdits.has(editId)) {
+          const [timestamp] = processedEdits.get(editId);
+          if (now - timestamp < EDIT_COOLDOWN) continue;
+        }
+
+        const chat = key.remoteJid;
+        const isGroup = chat.endsWith('@g.us');
         const editedMsg = message.editedMessage?.message || message.editedMessage;
         if (!editedMsg) continue;
 
-        let originalMsg = (store && typeof store.loadMessage === 'function') ? await store.loadMessage(key.remoteJid, key.id) : {};
+        // Get both messages properly
+        const originalMsg = await store.loadMessage(chat, key.id) || {};
         const sender = key.participant || key.remoteJid;
+        const senderName = await client.getName(sender);
 
+        // Enhanced content extractor
         const getContent = (msg) => {
           if (!msg) return '[Deleted]';
           const type = Object.keys(msg)[0];
-          return type === 'conversation' ? msg[type] : `[${type}]`;
+          const content = msg[type];
+          
+          switch(type) {
+            case 'conversation': 
+              return content;
+            case 'extendedTextMessage': 
+              return content.text + 
+                    (content.contextInfo?.quotedMessage ? ' (with quoted message)' : '');
+            case 'imageMessage': 
+              return `🖼️ ${content.caption || 'Image'}`;
+            case 'videoMessage': 
+              return `🎥 ${content.caption || 'Video'}`;
+            case 'documentMessage': 
+              return `📄 ${content.fileName || 'Document'}`;
+            default: 
+              return `[${type.replace('Message', '')}]`;
+          }
         };
 
-        const notificationMessage = `*⚠️ ANTI-EDIT RESTORED ⚠️*\n👤 *Sender:* @${sender.split('@')[0]}\n📄 *Original:* ${getContent(originalMsg?.message)}\n✏️ *Edited:* ${getContent(editedMsg)}`;
+        const originalContent = getContent(originalMsg.message);
+        const editedContent = getContent(editedMsg);
 
-        const sendTo = currentAntiedit === 'private' ? client.user.id : key.remoteJid;
-        await client.sendMessage(sendTo, { text: notificationMessage, mentions: [sender] }).catch(() => {});
-        processedEdits.add(editId);
+        // Only proceed if content actually changed
+        if (originalContent === editedContent) {
+          console.log(chalk.yellow(`[ANTIEDIT] No content change detected for ${editId}`));
+          continue;
+        }
+
+        const notificationMessage = `*⚠️📌 KING M ᴀɴᴛɪᴇᴅɪᴛ 📌⚠️*\n\n` +
+                                 `👤 *sᴇɴᴅᴇʀ:* @${sender.split('@')[0]}\n` +
+                                 `📄 *ᴏʀɪɢɪɴᴀʟ ᴍᴇssᴀɢᴇ:* ${originalContent}\n` +
+                                 `✏️ *ᴇᴅɪᴛᴇᴅ ᴍᴇssᴀɢᴇ:* ${editedContent}\n` +
+                                 `🧾 *ᴄʜᴀᴛ ᴛʏᴘᴇ:* ${isGroup ? 'Group' : 'DM'}`;
+
+        const sendTo = currentAntiedit === 'private' ? client.user.id : chat;
+        await client.sendMessage(sendTo, { 
+          text: notificationMessage,
+          mentions: [sender]
+        });
+
+        // Update tracking with timestamp
+        processedEdits.set(editId, [now, originalContent, editedContent]);
+        console.log(chalk.green(`[ANTIEDIT] Reported edit from ${senderName}`));
       }
-    } catch (err) { console.error(chalk.red('[ANTIEDIT ERROR]', err.message)); }
+
+      // Cleanup old entries
+      for (const [id, data] of processedEdits) {
+        if (now - data[0] > 60000) { // 1 minute retention
+          processedEdits.delete(id);
+        }
+      }
+    } catch (err) {
+      console.error(chalk.red('[ANTIEDIT ERROR]', err.stack));
+    }
   });
+
 
   client.ev.on('call', async (callData) => {
     const { anticall: dbAnticall } = await fetchSettings();
@@ -234,11 +293,34 @@ async function startPeace() {
         console.log(`Connection closed: ${reason}. Reconnecting...`);
         startPeace();
       }
-    } else if (connection === "open") {
+    }else if (connection === "open") {
       await initializeDatabase();
       console.log(color("✅ KING-M CONNECTED & DATABASE READY", "green"));
-      client.sendMessage(client.user.id, { text: `🔶 *KING M STATUS*\n✅ CONNECTED\n⚙️ MODE: ${mode}` }).catch(() => {});
 
+      const connText = `🔶 *KING MD ꜱᴛᴀᴛᴜꜱ*\n` +
+              `───────────────────────\n` +
+              `⚙️  ᴍᴏᴅᴇ » ${mode}\n` +
+              `⌨️  ᴘʀᴇꜰɪx » ${prefix}\n` +
+              `⏰  ᴛɪᴍᴇ » ${new Date().toLocaleTimeString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: false 
+              })} | ${new Date().toLocaleDateString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                month: '2-digit',
+                day: '2-digit',
+                year: 'numeric'
+              })}\n` +
+              `📅  ᴅᴀʏ » ${new Date().toLocaleDateString('en-US', { 
+                timeZone: 'Africa/Nairobi',
+                weekday: 'long' 
+              })}\n` +
+              `───────────────────────\n` +
+              `✅ ᴄᴏɴɴᴇᴄᴛᴇᴅ & ᴀᴄᴛɪᴠᴇ`;
+
+      client.sendMessage(client.user.id, { text: connText }).catch(() => {});
+}
       // Auto-follow KING-M newsletter and join support group on every (re)connect
       setTimeout(async () => {
         try {
