@@ -67,6 +67,7 @@ const {
         antisticker,
         autolike_emojis,
         antigroupmention,
+    antistatus,
         antimention,
         antiforward
 } = await fetchSettings(); 
