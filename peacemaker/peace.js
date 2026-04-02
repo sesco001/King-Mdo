@@ -59,7 +59,7 @@ const {
   antilink,
   antilinkall,
   antidelete,
-  gptdm,
+  chatbot,
   badword,
   antibot,
   antitag,
@@ -229,6 +229,10 @@ function handleIncomingMessage(message) {
 // ================== FIXED ANTIDELETE SYSTEM ==================
 // ================== FIXED STABLE ANTIDELETE SYSTEM ==================
 const messageStore = new Map();
+const deletionProcessed = new Set();
+
+// Auto-clean the dedup set every 60 seconds
+setInterval(() => deletionProcessed.clear(), 60000);
 
 // Helper to store only valid messages
 function storeIncomingMessage(mek) {
@@ -244,6 +248,8 @@ function storeIncomingMessage(mek) {
 async function handleDeletedMessage(client, mek, antideleteMode) {
     try {
         const deletedMsgId = mek.message.protocolMessage.key.id;  
+        if (deletionProcessed.has(deletedMsgId)) return; // dedup
+        deletionProcessed.add(deletedMsgId);
         const originalMessage = messageStore.get(deletedMsgId);  
         if (!originalMessage) return;  
 
@@ -292,6 +298,7 @@ client.ev.on('messages.upsert', async ({ messages }) => {
     // Fetch the setting
     const settings = await fetchSettings();
     const antidelete = settings.antidelete || "off";
+    const antieditMode = settings.antiedit || "off";
 
     if (antidelete !== "off") {
         if (mek.message?.protocolMessage?.type === 0) {
@@ -300,6 +307,57 @@ client.ev.on('messages.upsert', async ({ messages }) => {
         } else {
             // It's a normal message, store it.
             storeIncomingMessage(mek);
+        }
+    }
+
+    // ===== ANTIEDIT HANDLER =====
+    if (antieditMode !== "off") {
+        // Edited messages come as protocolMessage type 14
+        const isEdit = mek.message?.protocolMessage?.type === 14;
+        const editedMsgId = isEdit ? mek.message.protocolMessage.key.id : null;
+        const editedProto = isEdit ? mek.message.protocolMessage.editedMessage : null;
+
+        if (isEdit && editedProto) {
+            try {
+                const originalMessage = messageStore.get(editedMsgId);
+                const editorJid = mek.participant || mek.key.remoteJid;
+                const remoteJid = mek.key.remoteJid;
+                const botJid = client.user.id.split(':')[0] + '@s.whatsapp.net';
+
+                // Don't report bot's own edits
+                if (editorJid === botJid) return;
+
+                const newText = editedProto?.conversation ||
+                    editedProto?.extendedTextMessage?.text ||
+                    editedProto?.imageMessage?.caption ||
+                    editedProto?.videoMessage?.caption ||
+                    '*(media/unsupported)*';
+
+                const oldText = originalMessage?.message?.conversation ||
+                    originalMessage?.message?.extendedTextMessage?.text ||
+                    originalMessage?.message?.imageMessage?.caption ||
+                    originalMessage?.message?.videoMessage?.caption ||
+                    '*(unknown/media)*';
+
+                const now = new Date();
+                const report =
+                    `✏️ *KING M ANTIEDIT* ✏️\n\n` +
+                    `👤 *Edited By:* @${editorJid.split('@')[0]}\n` +
+                    `⏰ *Time:* ${now.toLocaleTimeString()}\n\n` +
+                    `📝 *Before:* ${oldText}\n\n` +
+                    `✏️ *After:* ${newText}`;
+
+                const targetJid = antieditMode === 'private'
+                    ? settings.owner?.[0]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net'
+                    : remoteJid;
+
+                await client.sendMessage(targetJid || remoteJid, {
+                    text: report,
+                    mentions: [editorJid]
+                });
+            } catch (err) {
+                console.error('Antiedit Error:', err.message);
+            }
         }
     }
 });
@@ -397,20 +455,19 @@ if (antisticker && antisticker !== 'off' && isSticker) {
 // Detects @status, @0, and the Group JID (the hidden tag-all method)
 //=========================== ANTI-STATUS MENTION LISTENER ===========================//
 if (m.isGroup && antistatus === 'on' && !isAdmin && !Owner && isBotAdmin) {
-    const isStatusTag = m.message?.groupStatusMentionMessage || 
-                        m.msg?.contextInfo?.groupStatusMentionMessage ||
-                        messageBody.includes('@status');
+    const isStatusTag =
+        m.mtype === 'groupStatusMentionMessage' ||
+        m.message?.groupStatusMentionMessage != null ||
+        m.msg?.groupStatusMentionMessage != null ||
+        m.msg?.contextInfo?.groupStatusMentionMessage != null ||
+        m.message?.extendedTextMessage?.contextInfo?.groupStatusMentionMessage != null ||
+        messageBody.toLowerCase().includes('@status') ||
+        (m.mentionedJid && m.mentionedJid.some(j => j === m.chat));
 
     if (isStatusTag) {
         try {
-            // Delete first
-            await client.sendMessage(m.chat, {
-                delete: m.key
-            });
-
-            // Delay the reply slightly to avoid 429 rate-limiting
+            await client.sendMessage(m.chat, { delete: m.key });
             await sleep(1000); 
-
             await client.sendMessage(m.chat, {
                 text: `⚠️ *ANTI-TAG* @${m.sender.split('@')[0]}, status tagging is prohibited!`,
                 mentions: [m.sender]
@@ -499,7 +556,12 @@ const totalcmds = () => {
     return numUpper;
 }         
 //========================================================================================================================// 
-  if (gptdm === 'on' && m.chat.endsWith("@s.whatsapp.net")) {
+  const chatbotActive =
+    (chatbot === 'dm' && m.chat.endsWith('@s.whatsapp.net')) ||
+    (chatbot === 'group' && m.chat.endsWith('@g.us')) ||
+    (chatbot === 'all');
+
+  if (chatbotActive) {
     // 1. Safety Checks: Don't reply to yourself or empty messages
     if (itsMe) return; 
     if (!text || text.length < 2) return; 
@@ -509,7 +571,7 @@ const totalcmds = () => {
         
         // 2. Rate Limiting: Prevents the bot from spamming
         if (currentTime - lastTextTime < messageDelay) {
-            console.log('Message skipped: Rate limit active for this DM.');
+            console.log('Message skipped: Rate limit active for chatbot.');
             return;
         }
 
@@ -531,6 +593,13 @@ const totalcmds = () => {
             async () => {
                 const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(text)}`);
                 return r?.result || r?.data || null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.freegpt4.de/chat/completions`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
+                });
+                return r?.choices?.[0]?.message?.content || null;
             }
         ];
 
@@ -545,11 +614,11 @@ const totalcmds = () => {
             await m.reply(aiReply);
             lastTextTime = currentTime;
         } else {
-            console.error("AI Error: All AI APIs returned no result.");
+            console.error("Chatbot: All AI APIs returned no result.");
         }
 
     } catch (e) {
-        console.error("GPT DM Critical Error:", e);
+        console.error("Chatbot Critical Error:", e);
     }
 }
 //========================================================================================================================//
@@ -753,7 +822,7 @@ let cap = `
 │ ⬡ antitag
 │ ⬡ antilink
 │ ⬡ antilinkall
-│ ⬡ gptdm
+│ ⬡ chatbot
 │ ⬡ autoview
 │ ⬡ autolike
 │ ⬡ autoread
@@ -1508,15 +1577,23 @@ break;
 }
   
                       
-case "gptdm": {
-        if(!Owner) throw NotOwner;
+case "chatbot": {
+  if (!Owner) throw NotOwner;
   const settings = await getSettings();
-  const current = settings.gptdm;
-  if (!text) return reply(`🙂‍↕️ gptdm is currently *${current.toUpperCase()}*`);
-  if (!["on", "off"].includes(text)) return reply("Usage: gptdm on/off");
-  if (text === current) return reply(`✅ Gptdm is already *${text.toUpperCase()}*`);
-  await updateSetting("gptdm", text);
-  reply(`✅ Gptdm has been turned *${text.toUpperCase()}*`);
+  const current = settings.chatbot || 'off';
+  const validModes = ['off', 'dm', 'group', 'all'];
+  if (!text) return reply(
+    `🤖 *Chatbot Status:* *${current.toUpperCase()}*\n\n` +
+    `Usage: ${prefix}chatbot [dm/group/all/off]\n` +
+    `• *dm* - reply in private chats only\n` +
+    `• *group* - reply in groups only\n` +
+    `• *all* - reply everywhere\n` +
+    `• *off* - disabled`
+  );
+  if (!validModes.includes(text)) return reply(`❌ Invalid mode. Use: dm / group / all / off`);
+  if (text === current) return reply(`✅ Chatbot is already set to *${text.toUpperCase()}*`);
+  await updateSetting('chatbot', text);
+  reply(`✅ Chatbot mode set to *${text.toUpperCase()}*`);
 }
 break;
                       
@@ -5986,60 +6063,75 @@ client.sendMessage(
 //========================================================================================================================//                  
 case "whatsong": case "shazam": {
     try {
-        // 1. Check if user quoted an audio or video
-        if (!m.quoted) return m.reply("Please tag a short video or audio to identify the song.");
+        if (!m.quoted) return m.reply("Please tag a short audio or video message to identify the song.");
 
         let d = m.quoted;
         let mimes = (d.msg || d).mimetype || '';
 
-        if (!/video|audio/.test(mimes)) return m.reply("Huh? This is not a video or audio file.");
+        if (!/video|audio/.test(mimes)) return m.reply("❌ This is not an audio or video file.");
 
-        m.reply("Analyzing the media... Please wait.");
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+        m.reply("🎵 Analyzing audio... Please wait.");
 
-        // 2. Download the media using your smsg helper
+        // Download the media
         let mediaBuffer = await d.download();
-
-        // 3. Save temporarily and upload to get a URL (Required by the API)
-        let tempFile = getRandom(mimes.includes('video') ? '.mp4' : '.mp3');
+        let ext = mimes.includes('video') ? '.mp4' : '.mp3';
+        let tempFile = getRandom(ext);
         fs.writeFileSync(tempFile, mediaBuffer);
-        
-        let mediaUrl = await uploadToCatbox(tempFile);
-        fs.unlinkSync(tempFile);
 
-        // 4. Try multiple Shazam/song-id APIs with fallback
+        // Upload to catbox
+        let mediaUrl;
+        try {
+            mediaUrl = await uploadToCatbox(tempFile);
+        } catch (uploadErr) {
+            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+            return m.reply("❌ Failed to upload the audio for analysis. Try again.");
+        }
+        if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+
+        // Try multiple Shazam APIs
         let songResult = null;
-
         const shazamApis = [
             async () => {
                 const r = await fetchJson(`https://api.siputzx.my.id/api/tools/shazam?url=${encodeURIComponent(mediaUrl)}`);
-                return r?.data ? JSON.stringify(r.data, null, 2) : null;
-            },
-            async () => {
-                const r = await fetchJson(`https://apiskeith.top/ai/shazam?url=${encodeURIComponent(mediaUrl)}`);
-                return r?.result || null;
+                if (!r?.data) return null;
+                const d = r.data;
+                return `🎵 *${d.title || d.track?.title || 'Unknown'}*\n👤 *Artist:* ${d.subtitle || d.track?.subtitle || 'Unknown'}\n🎶 *Genre:* ${d.genres?.primary || 'Unknown'}`;
             },
             async () => {
                 const r = await fetchJson(`https://api.botcahx.eu.org/api/tools/shazam?url=${encodeURIComponent(mediaUrl)}`);
+                const d = r?.result || r?.data;
+                if (!d) return null;
+                if (typeof d === 'string') return d;
+                return `🎵 *${d.title || 'Unknown'}*\n👤 *Artist:* ${d.artist || d.subtitle || 'Unknown'}`;
+            },
+            async () => {
+                const r = await fetchJson(`https://apiskeith.top/ai/shazam?url=${encodeURIComponent(mediaUrl)}`);
                 return r?.result || r?.data || null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.agatz.xyz/api/shazam?url=${encodeURIComponent(mediaUrl)}`);
+                const d = r?.data || r?.result;
+                if (!d) return null;
+                return typeof d === 'string' ? d : JSON.stringify(d);
             }
         ];
 
         for (const apiFn of shazamApis) {
-            try {
-                songResult = await apiFn();
-                if (songResult) break;
-            } catch (_) {}
+            try { songResult = await apiFn(); if (songResult) break; } catch (_) {}
         }
 
         if (!songResult) {
-            return m.reply("I couldn't identify the song. The audio might be too short or unclear.");
+            await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+            return m.reply("❌ Couldn't identify the song. Try a longer or clearer audio clip.");
         }
 
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
         await m.reply(`🎵 *SONG IDENTIFIED* 🎵\n\n${songResult}`);
 
     } catch (error) {
-        console.error(error);
-        m.reply("An error occurred while identifying the song:\n" + error.message);
+        console.error('Shazam Error:', error);
+        m.reply("❌ An error occurred while identifying the song:\n" + error.message);
     }
 }
 break;
@@ -6313,34 +6405,55 @@ case "ytmp3": case "yta": {
     try {
         await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        // 1. Search for the video to get the URL and Title
-        let search = await yts(text);
-        let link = search.all[0].url;
-        let title = search.all[0].title;
-
-        // 2. Call the New Keith API
-        const apiUrl = `https://apiskeith.top/download/ytmp3?url=${encodeURIComponent(link)}`;
-        let data = await fetchJson(apiUrl);
-
-        // 3. Validate response
-        // Note: Check if the API returns data.result or data.url based on its current format
-        let downloadUrl = data.result?.downloadUrl || data.url || data.result?.url;
-
-        if (!downloadUrl) {
-            return m.reply("❌ Could not get a download link. The API might be down.");
+        // 1. Resolve to a YouTube URL if not already a URL
+        let link, title;
+        if (/https?:\/\/(www\.)?youtu/.test(text)) {
+            link = text;
+            const s = await yts({ videoId: text.match(/(?:v=|youtu\.be\/)([^&?]+)/)?.[1] || '' });
+            title = s?.title || 'Unknown';
+        } else {
+            const search = await yts(text);
+            if (!search.all.length) return m.reply("❌ No results found.");
+            link = search.all[0].url;
+            title = search.all[0].title;
         }
 
-        // 4. Send as Audio Document (to keep quality and filename)
-        await client.sendMessage(
-            m.chat,
-            {
-                document: { url: downloadUrl },
-                mimetype: "audio/mpeg",
-                fileName: `${title}.mp3`,
-                caption: `✨ *KING M YTMP3* ✨\n\n*Title:* ${title}\n*Link:* ${link}`
+        // 2. Try multiple download APIs with fallback
+        let downloadUrl = null;
+        const mp3Apis = [
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`);
+                return d?.data?.url || d?.result?.url || d?.url || null;
             },
-            { quoted: m }
-        );
+            async () => {
+                const d = await fetchJson(`https://api.botcahx.eu.org/api/download/ytmp3?url=${encodeURIComponent(link)}`);
+                return d?.result?.download?.url || d?.url || null;
+            },
+            async () => {
+                const d = await fetchJson(`https://apiskeith.top/download/ytmp3?url=${encodeURIComponent(link)}`);
+                return d?.result?.downloadUrl || d?.result?.url || d?.url || null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`);
+                return d?.data?.url || d?.url || null;
+            }
+        ];
+
+        for (const fn of mp3Apis) {
+            try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {}
+        }
+
+        if (!downloadUrl) {
+            await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+            return m.reply("❌ All download APIs failed. Try again later.");
+        }
+
+        await client.sendMessage(m.chat, {
+            document: { url: downloadUrl },
+            mimetype: "audio/mpeg",
+            fileName: `${title}.mp3`,
+            caption: `✨ *KING M YTMP3* ✨\n\n*Title:* ${title}\n*Link:* ${link}`
+        }, { quoted: m });
 
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
@@ -6355,49 +6468,64 @@ break;
 case 'ytmp4':
 case "ytv": {
     const yts = require("yt-search");
-    if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸!");
+    if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸 𝗼𝗿 𝘃𝗶𝗱𝗲𝗼 𝗻𝗮𝗺𝗲!");
 
     try {
-        // React to show the bot is processing
         await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        // 1. Search for the video to get the exact URL
-        let search = await yts(text);
-        if (!search.all.length) return m.reply("No results found for your query.");
-        let link = search.all[0].url;
-        let title = search.all[0].title;
-
-        // 2. Call the New Keith Video API
-        const apiUrl = `https://apiskeith.top/download/video?url=${encodeURIComponent(link)}`;
-        
-        // Using your fetchJson helper from the file you provided earlier
-        let data = await exports.fetchJson(apiUrl);
-
-        // 3. Validate and get the download link
-        // Note: Check the API response keys (usually result.url or result.downloadUrl)
-        let downloadUrl = data.result?.url || data.result?.downloadUrl || data.url;
-
-        if (!downloadUrl) {
-            return m.reply("❌ Unable to fetch the video. The API might be down.");
+        // 1. Resolve URL
+        let link, title;
+        if (/https?:\/\/(www\.)?youtu/.test(text)) {
+            link = text;
+            title = 'Video';
+        } else {
+            const search = await yts(text);
+            if (!search.all.length) return m.reply("❌ No results found.");
+            link = search.all[0].url;
+            title = search.all[0].title;
         }
 
-        // 4. Send the Video to the user
-        await client.sendMessage(
-            m.chat,
-            {
-                video: { url: downloadUrl },
-                mimetype: "video/mp4",
-                caption: `✨ *KING M VIDEO* ✨\n\n*Title:* ${title}\n*Link:* ${link}`,
-                fileName: `${title}.mp4`
+        // 2. Try multiple video download APIs
+        let downloadUrl = null;
+        const mp4Apis = [
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp4?url=${encodeURIComponent(link)}`);
+                return d?.data?.url || d?.result?.url || d?.url || null;
             },
-            { quoted: m }
-        );
+            async () => {
+                const d = await fetchJson(`https://api.botcahx.eu.org/api/download/ytmp4?url=${encodeURIComponent(link)}`);
+                return d?.result?.download?.url || d?.url || null;
+            },
+            async () => {
+                const d = await fetchJson(`https://apiskeith.top/download/video?url=${encodeURIComponent(link)}`);
+                return d?.result?.url || d?.result?.downloadUrl || d?.url || null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.agatz.xyz/api/ytmp4?url=${encodeURIComponent(link)}`);
+                return d?.data?.url || d?.url || null;
+            }
+        ];
 
-        // Success reaction
+        for (const fn of mp4Apis) {
+            try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {}
+        }
+
+        if (!downloadUrl) {
+            await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+            return m.reply("❌ All download APIs failed. Try again later.");
+        }
+
+        await client.sendMessage(m.chat, {
+            video: { url: downloadUrl },
+            mimetype: "video/mp4",
+            caption: `✨ *KING M YTMP4* ✨\n\n*Title:* ${title}\n*Link:* ${link}`,
+            fileName: `${title}.mp4`
+        }, { quoted: m });
+
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (error) {
-        console.error("YTV Error:", error);
+        console.error("YTMP4 Error:", error);
         m.reply(`An error occurred: ${error.message}`);
         await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
     }

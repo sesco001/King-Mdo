@@ -23,7 +23,7 @@ const defaultSettings = {
   antistatus: 'off', 
   antiforeign: 'off',
   badword: 'off',
-  gptdm: 'off',
+  chatbot: 'off',
   welcomegoodbye: 'off',
   autoread: 'off',
   mode: 'public',
