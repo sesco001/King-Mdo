@@ -69,8 +69,7 @@ const {
         antigroupmention,
     antistatus,
         antimention,
-        antiforward,
-        chatbot
+        antiforward
 } = await fetchSettings(); 
           
     var body =
@@ -551,31 +550,6 @@ const totalcmds = () => {
 
     } catch (e) {
         console.error("GPT DM Critical Error:", e);
-    }
-}
-//========================================================================================================================//
-// ===== GROUP CHATBOT LISTENER =====
-if (chatbot === 'on' && m.isGroup && !itsMe && cmd === false) {
-    if (!text || text.length < 2) return;
-    try {
-        await client.sendPresenceUpdate('composing', m.chat);
-        let botReply = null;
-        const chatApis = [
-            async () => {
-                const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(text)}`);
-                return r?.data || r?.result || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(text)}`);
-                return r?.result || r?.data || null;
-            }
-        ];
-        for (const fn of chatApis) {
-            try { botReply = await fn(); if (botReply) break; } catch (_) {}
-        }
-        if (botReply) await m.reply(botReply);
-    } catch (e) {
-        console.error("Group Chatbot Error:", e);
     }
 }
 //========================================================================================================================//
@@ -6695,25 +6669,29 @@ break;
           case 'broadcast': { 
          if (!Owner) throw NotOwner; 
          if (!text) { 
-             reply("Provide a message to cats!") 
+             reply("Provide a message to broadcast!") 
              return; 
-         } 
-         let getGroups = await client.groupFetchAllParticipating() 
-         let groups = Object.entries(getGroups) 
-             .slice(0) 
-             .map(entry => entry[1]) 
-         let res = groups.map(v => v.id) 
-         reply(` Broadcasting in ${res.length} Group Chat, in ${res.length * 1.5} seconds`) 
-         for (let i of res) { 
-             let txt = `MAKA 𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧\n\n🀄 Message: ${text}\n\nAuthor: ${pushname}` 
-             await client.sendMessage(i, { 
-                 image: { 
-                     url: menulink
-                 }, 
-                 caption: `${txt}` 
-             }) 
-         } 
-         reply(`Broadcasted to ${res.length} Groups.`) 
+         }
+         // Broadcast to all DM (private) contacts from the store
+         try {
+             const allChats = Object.keys(store?.chats?.all?.() ? store.chats.all() : {});
+             const dmChats = allChats.filter(jid => jid.endsWith('@s.whatsapp.net') && jid !== client.user.id.split(':')[0] + '@s.whatsapp.net');
+             if (dmChats.length === 0) return reply("No DM contacts found in store yet. Send or receive at least one DM first.");
+             reply(`📡 Broadcasting to *${dmChats.length}* DMs...`);
+             let sent = 0;
+             const txt = `📢 *𝗕𝗥𝗢𝗔𝗗𝗖𝗔𝗦𝗧*\n\n${text}\n\n_— ${pushname}_`;
+             for (let jid of dmChats) {
+                 try {
+                     await client.sendMessage(jid, { text: txt });
+                     sent++;
+                     await sleep(1500);
+                 } catch (_) {}
+             }
+             reply(`✅ Broadcast sent to *${sent}/${dmChats.length}* DMs.`);
+         } catch (err) {
+             logError('BROADCAST', err);
+             reply("❌ Broadcast failed.");
+         }
      } 
  break;
 
@@ -6993,70 +6971,6 @@ case "listsudo":
   }
   break;
 //========================================================================================================================//
-// ================== CHATBOT TOGGLE ==================
-case "chatbot": {
-    if (!Owner) throw NotOwner;
-    const settings = await getSettings();
-    const current = settings.chatbot || 'off';
-    if (!text) return reply(`🤖 Chatbot is currently *${current.toUpperCase()}*`);
-    if (!["on", "off"].includes(text)) return reply("Usage: chatbot on/off");
-    if (text === current) return reply(`✅ Chatbot is already *${text.toUpperCase()}*`);
-    await updateSetting("chatbot", text);
-    reply(`✅ Chatbot has been turned *${text.toUpperCase()}*`);
-}
-break;
-//========================================================================================================================//
-// ================== STEAL STICKER ==================
-case "steal": case "clone": {
-    const { Sticker, StickerTypes } = require('wa-sticker-formatter');
-    try {
-        if (!m.quoted) return reply(`Usage: ${prefix + command} <pack name>|<author>\nReply to a sticker.`);
-        const mtype = m.quoted.mtype || '';
-        if (!mtype.includes('sticker') && !mtype.includes('image') && !mtype.includes('video')) {
-            return reply("Please reply to a sticker, image or short video.");
-        }
-        const parts = text ? text.split('|') : [];
-        const pack = parts[0]?.trim() || packname;
-        const auth = parts[1]?.trim() || author;
-
-        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
-        const buff = await m.quoted.download();
-        const sticker = new Sticker(buff, {
-            pack,
-            author: auth,
-            type: StickerTypes.FULL,
-            categories: ['🤩', '🎉'],
-            id: '12345',
-            quality: 50,
-        });
-        const stickerBuffer = await sticker.toBuffer();
-        await client.sendMessage(m.chat, { sticker: stickerBuffer }, { quoted: m });
-        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
-    } catch (error) {
-        logError('STEAL', error);
-        reply("❌ Failed to steal sticker.");
-    }
-}
-break;
-//========================================================================================================================//
-// ================== TRANSLATE ==================
-case "tr": case "translate": {
-    try {
-        if (!text && !m.quoted?.text) return reply(`Usage: ${prefix + command} <language code> <text>\nExample: ${prefix + command} es Hello how are you\nOr reply to a message with ${prefix + command} es`);
-        const parts = args;
-        const langCode = parts[0] || 'en';
-        const textToTranslate = parts.slice(1).join(' ') || m.quoted?.text || '';
-        if (!textToTranslate) return reply("Please provide text to translate.");
-
-        const result = await translatte(textToTranslate, { to: langCode });
-        reply(`🌐 *Translation (→ ${langCode.toUpperCase()})*\n\n${result.text}`);
-    } catch (error) {
-        logError('TRANSLATE', error);
-        reply("❌ Translation failed. Make sure the language code is valid (e.g. en, es, fr, sw, ar).");
-    }
-}
-break;
-//========================================================================================================================//
 // ================== LIST ADMINS ==================
 case "listadmin": case "adminlist": {
     if (!m.isGroup) return reply("This command is only for groups.");
@@ -7131,37 +7045,6 @@ case "ocr": case "readtext": case "totext": {
 }
 break;
 //========================================================================================================================//
-// ================== FBDL - FACEBOOK DOWNLOADER ==================
-case "fbdl": case "fb": case "facebook": {
-    try {
-        if (!text) return reply(`Usage: ${prefix + command} <facebook video url>`);
-        if (!isUrl(text)) return reply("Please provide a valid Facebook video URL.");
-        reply("⬇️ Downloading Facebook video...");
-
-        const dlApis = [
-            async () => {
-                const r = await fetchJson(`https://api.siputzx.my.id/api/d/facebook?url=${encodeURIComponent(text)}`);
-                return r?.data?.url || r?.result?.url || r?.url || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://api.botcahx.eu.org/api/download/facebook?url=${encodeURIComponent(text)}`);
-                return r?.result?.url || r?.url || null;
-            }
-        ];
-        let videoUrl = null;
-        for (const fn of dlApis) {
-            try { videoUrl = await fn(); if (videoUrl) break; } catch (_) {}
-        }
-
-        if (!videoUrl) return reply("❌ Failed to download. Make sure the video is public.");
-        await client.sendMessage(m.chat, { video: { url: videoUrl }, caption: "✨ *KING M Facebook Downloader* ✨" }, { quoted: m });
-    } catch (error) {
-        logError('FBDL', error);
-        reply("❌ Failed to download Facebook video.");
-    }
-}
-break;
-//========================================================================================================================//
 // ================== ALIVE2 - STYLISH BOT STATUS ==================
 case "alive2": case "status2": {
     try {
@@ -7187,57 +7070,6 @@ case "alive2": case "status2": {
     } catch (error) {
         logError('ALIVE2', error);
         reply("Bot is alive! ✅");
-    }
-}
-break;
-//========================================================================================================================//
-// ================== ANTICALL TOGGLE ==================
-case "anticall": {
-    if (!Owner) throw NotOwner;
-    const settings = await getSettings();
-    const current = settings.anticall || 'off';
-    if (!text) return reply(`📵 Anticall is currently *${current.toUpperCase()}*`);
-    if (!["on", "off"].includes(text)) return reply("Usage: anticall on/off");
-    if (text === current) return reply(`✅ Anticall is already *${text.toUpperCase()}*`);
-    await updateSetting("anticall", text);
-    reply(`✅ Anticall has been turned *${text.toUpperCase()}*`);
-}
-break;
-//========================================================================================================================//
-// ================== ANTIFOREIGN TOGGLE ==================
-case "antiforeign": {
-    if (!m.isGroup) return reply("This command is only for groups.");
-    if (!isAdmin && !Owner) return reply("Admin only command.");
-    if (!isBotAdmin) return reply("I need to be an admin to enforce this.");
-    const settings = await getSettings();
-    const current = settings.antiforeign || 'off';
-    if (!text) return reply(`🌍 Antiforeign is currently *${current.toUpperCase()}*`);
-    if (!["on", "off"].includes(text)) return reply("Usage: antiforeign on/off");
-    await updateSetting("antiforeign", text);
-    reply(`✅ Antiforeign has been turned *${text.toUpperCase()}*`);
-}
-break;
-//========================================================================================================================//
-// ================== BROADCAST WITH DELAY ==================
-case "bc": case "broadcast": {
-    if (!Owner) throw NotOwner;
-    if (!text) return reply(`Usage: ${prefix + command} <message>`);
-    try {
-        const groups = await client.groupFetchAllParticipating();
-        const groupJids = Object.keys(groups);
-        reply(`📡 Broadcasting to *${groupJids.length}* groups...`);
-        let sent = 0;
-        for (const jid of groupJids) {
-            try {
-                await client.sendMessage(jid, { text: text });
-                sent++;
-                await sleep(1500);
-            } catch (_) {}
-        }
-        reply(`✅ Broadcast sent to *${sent}/${groupJids.length}* groups.`);
-    } catch (error) {
-        logError('BROADCAST', error);
-        reply("❌ Broadcast failed.");
     }
 }
 break;
