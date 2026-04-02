@@ -562,63 +562,61 @@ const totalcmds = () => {
     (chatbot === 'all');
 
   if (chatbotActive) {
-    // 1. Safety Checks: Don't reply to yourself or empty messages
-    if (itsMe) return; 
-    if (!text || text.length < 2) return; 
+    // Don't respond to yourself, commands, or empty/very short messages
+    if (itsMe) return;
+    if (budy.startsWith(prefix)) return; // it's a command, skip
+    if (!budy || budy.trim().length < 2) return;
 
     try {
         const currentTime = Date.now();
         
-        // 2. Rate Limiting: Prevents the bot from spamming
+        // Rate Limiting: 3 seconds between replies
         if (currentTime - lastTextTime < messageDelay) {
-            console.log('Message skipped: Rate limit active for chatbot.');
+            console.log('[Chatbot] Rate limit active, skipping.');
             return;
         }
 
-        // 3. Add a "typing..." presence to make it look natural
         await client.sendPresenceUpdate('composing', m.chat);
 
-        // 4. Try multiple free AI APIs with fallback
+        const userMessage = budy.trim(); // use FULL message, not just args
         let aiReply = null;
 
         const aiApis = [
             async () => {
-                const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(text)}`);
+                const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(userMessage)}`);
                 return r?.data || r?.result || null;
             },
             async () => {
-                const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(text)}`);
+                const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(userMessage)}`);
                 return r?.result || r?.data || null;
             },
             async () => {
-                const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(text)}`);
+                const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(userMessage)}`);
                 return r?.result || r?.data || null;
             },
             async () => {
-                const r = await fetchJson(`https://api.freegpt4.de/chat/completions`, {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ messages: [{ role: 'user', content: text }] })
-                });
-                return r?.choices?.[0]?.message?.content || null;
+                const r = await fetchJson(`https://api.agatz.xyz/api/ai?message=${encodeURIComponent(userMessage)}`);
+                return r?.data || r?.result || null;
             }
         ];
 
         for (const apiFn of aiApis) {
             try {
                 aiReply = await apiFn();
-                if (aiReply) break;
+                if (aiReply && typeof aiReply === 'string' && aiReply.trim()) break;
+                else aiReply = null;
             } catch (_) {}
         }
 
         if (aiReply) {
-            await m.reply(aiReply);
+            await m.reply(aiReply.trim());
             lastTextTime = currentTime;
         } else {
-            console.error("Chatbot: All AI APIs returned no result.");
+            console.error('[Chatbot] All AI APIs returned no result.');
         }
 
     } catch (e) {
-        console.error("Chatbot Critical Error:", e);
+        console.error('[Chatbot] Critical Error:', e.message);
     }
 }
 //========================================================================================================================//
@@ -822,7 +820,7 @@ let cap = `
 │ ⬡ antitag
 │ ⬡ antilink
 │ ⬡ antilinkall
-│ ⬡ chatbot
+│ ⬡ chatbot [dm/group/all/off]
 │ ⬡ autoview
 │ ⬡ autolike
 │ ⬡ autoread
@@ -921,6 +919,7 @@ let cap = `
 │ 🧠 gpt2
 │ 🧠 gpt3
 │ 🧠 gpt4
+│ 🤖 chatbot dm/group/all/off  ← auto-reply
 ┗▣
 
 ┏▣ 👥 *GROUP MANAGER* 👥
