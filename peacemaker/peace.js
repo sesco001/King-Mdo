@@ -6825,18 +6825,38 @@ break;
 //========================================================================================================================//                  
  case "gemini": {
     try {
-        if (!text) return m.reply("This is Peace, an AI using Gemini APIs to process text, provide yr query");
-    
-        const { default: Gemini } = await import('gemini-ai');
+        if (!text) return m.reply("🤖 *Gemini AI*\n\nSend a question or prompt.\nExample: `.gemini what is quantum physics?`");
 
-        const gemini = new Gemini("AIzaSyDJUtskTG-MvQdlT4tNE319zBqLMFei8nQ");
-        const chat = gemini.createChat();
+        await client.sendPresenceUpdate('composing', m.chat);
 
-        const res = await chat.ask(text);
+        let result = null;
+        const aiApis = [
+            async () => {
+                const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(text)}`);
+                return r?.result || r?.data || null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(text)}`);
+                return r?.data || r?.result || null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(text)}`);
+                return r?.result || r?.data || null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.agatz.xyz/api/ai?message=${encodeURIComponent(text)}`);
+                return r?.data || r?.result || null;
+            }
+        ];
 
-        await m.reply(res);
+        for (const fn of aiApis) {
+            try { result = await fn(); if (result && typeof result === 'string' && result.trim()) break; else result = null; } catch (_) {}
+        }
+
+        if (!result) return m.reply("❌ All AI APIs are currently unavailable. Try again later.");
+        await m.reply(result.trim());
     } catch (e) {
-        m.reply("I am unable to generate responses\n\n" + e);
+        m.reply("❌ Error: " + e.message);
     }
  }
  break;
