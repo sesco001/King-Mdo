@@ -153,12 +153,15 @@ const {
     const reply = m.reply;
     const sender = m.sender;
 
-    // ── CRITICAL GUARD: never process the bot's own messages ─────────────────
-    // m.isBaileys = bot sent this via Baileys (antisticker warnings, chatbot replies, etc.)
-    // m.fromMe    = message originated from the bot's phone number
-    // In self mode we allow fromMe commands; in all other modes we block them.
+    // ── CRITICAL GUARD: never process the bot's own automated messages ───────
+    // m.isBaileys  = auto-sent by Baileys engine (chatbot replies, reactions, warnings)
+    // m.fromMe     = sent FROM the bot's own phone number
+    //
+    // RULE: Block Baileys auto-messages always.
+    // Allow fromMe COMMANDS (starts with prefix) — owner uses the bot's own phone.
+    // Block fromMe NON-commands in public mode (prevents chatbot reply loops).
     if (m.isBaileys) return;
-    if (m.fromMe && mode !== 'self') return;
+    if (m.fromMe && mode !== 'self' && !messageBody.startsWith(prefix)) return;
     // ─────────────────────────────────────────────────────────────────────────
     const mek = chatUpdate.messages[0];
           // ==================================
