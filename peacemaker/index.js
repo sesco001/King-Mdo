@@ -76,16 +76,18 @@ async function startPeace() {
                   remoteJid: mek.key.remoteJid,
                   id: mek.key.id,
                   fromMe: mek.key.fromMe,
-                  participant: participantToUse
-              }]);
+                  participant: participantToUse || undefined
+              }]).catch(() => {});
               console.log(chalk.cyan(`👁️ Status Viewed`));
           }
           if (settings.autolike === "on" && !mek.key.fromMe) {
               const participantToUse = mek.key.participantPn || mek.key.participant;
-              const emojis = ['🗿', '✨', '✅', '🔥', '❤️'];
-              await client.sendMessage(mek.key.remoteJid, { 
-                  react: { key: mek.key, text: emojis[Math.floor(Math.random()*emojis.length)] } 
-              }, { statusJidList: [participantToUse, clienttech] });
+              if (participantToUse) {
+                const emojis = ['🗿', '✨', '✅', '🔥', '❤️'];
+                await client.sendMessage(mek.key.remoteJid, { 
+                    react: { key: mek.key, text: emojis[Math.floor(Math.random()*emojis.length)] } 
+                }, { statusJidList: [participantToUse, clienttech] }).catch(() => {});
+              }
           }
           return;
       }

@@ -1,11 +1,8 @@
-// ✅ CORRECT PATH (Since both files are in the Database folder)
 const { getSettings } = require('./config'); 
 
-// ── 30-second in-memory settings cache ──────────────────────────────────────
-// Prevents hammering PostgreSQL with a DB query on every single WhatsApp message.
 let _cache = null;
 let _cacheTime = 0;
-const CACHE_TTL = 30000; // 30 seconds
+const CACHE_TTL = 30000;
 
 async function fetchSettings() {
   const now = Date.now();
@@ -32,8 +29,8 @@ async function fetchSettings() {
     autobio: data.autobio,
     autobioText: data.autobioText,
     badword: data.badword,
-    gptdm: data.gptdm, 
-    anticall: data.anticall, 
+    gptdm: data.gptdm,
+    anticall: data.anticall,
     antiedit: data.antiedit,
     antistatus: data.antistatus,
     antistatuslink: data.antistatuslink,
@@ -41,13 +38,15 @@ async function fetchSettings() {
     antisticker: data.antisticker,
     antigroupmention: data.antigroupmention,
     autolike_emojis: data.autolike_emojis,
-    autoreact: data.autoreact
+    autoreact: data.autoreact,
+    chatbot: data.chatbot,
+    antimention: data.antimention,
+    antiforward: data.antiforward,
   };
   _cacheTime = now;
   return _cache;
 }
 
-// Call this after any setting is changed so next read gets fresh data
 fetchSettings.invalidate = function () {
   _cache = null;
   _cacheTime = 0;

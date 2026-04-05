@@ -1393,6 +1393,7 @@ break;
                         //========================================================================================================================//
         case 'fancy':
         case 'font':
+        case 'setfont':
             try {
                 // Check if user provided arguments
                 // We use 'args' which you defined at the top of your file
@@ -1400,17 +1401,17 @@ break;
                 let textToChange = args.slice(1).join(" ");
 
                 if (!id) {
-                    // No arguments provided? Show the list of styles
                     const readMore = String.fromCharCode(8206).repeat(4001);
-                    let demoText = "King-M"; 
-                    
+                    let demoText = "King-M";
+                    let styleList = "";
+                    try { styleList = fancy.list(demoText, fancy); } catch (_) {
+                        const keys = Object.keys(fancy).filter(k => !isNaN(k));
+                        styleList = keys.map((k, i) => `${i + 1}. Style ${parseInt(k) + 1}`).join('\n');
+                    }
                     let menu = `🎨 *KING-M FANCY FONTS* 🎨\n\n` +
-                               `Usage: *${prefix}fancy [ID] [TEXT]*\n` +
-                               `Example: *${prefix}fancy 10 King-M*\n` +
-                               readMore + "\n" +
-                               fancy.list(demoText, fancy);
-                    
-                    // Using client.sendMessage to be safe
+                               `Usage: *${prefix}font [ID] [TEXT]*\n` +
+                               `Example: *${prefix}font 10 King-M*\n` +
+                               readMore + "\n" + styleList;
                     await client.sendMessage(m.chat, { text: menu }, { quoted: m });
                     break;
                 }
@@ -3443,7 +3444,7 @@ case 'gpt': case 'deepseek': {
 break;
 
 //========================================================================================================================//                          
- case 'trt': case 'translate':{
+ case 'trt': {
 try {
     // Check if the message is quoted
     if (!m.quoted) {
