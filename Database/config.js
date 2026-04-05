@@ -37,7 +37,8 @@ const defaultSettings = {
   antigroupmention: 'off',
   autolike_emojis: 'default',
   antimention: 'off',
-  antiforward: 'off'
+  antiforward: 'off',
+  autoreact: 'off'
 };
 
 // ================= MODE DETECTION =================

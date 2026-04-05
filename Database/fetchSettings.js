@@ -31,7 +31,8 @@ async function fetchSettings() {
     antigroupmention: data.antigroupmention,
     
     // ✅ THIS IS PERFECT
-    autolike_emojis: data.autolike_emojis 
+    autolike_emojis: data.autolike_emojis,
+    autoreact: data.autoreact
   };
 }
 

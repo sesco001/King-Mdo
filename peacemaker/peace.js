@@ -15,7 +15,13 @@ const messageDelay = 3000;
 
 // Polyfill for downloadAndSaveMediaMessage (removed in newer Baileys)
 const _downloadAndSave = async (client, msg) => {
-    const buf = await client.downloadMediaMessage(msg);
+    // Use module-level downloadMediaMessage import (works without client method)
+    let buf;
+    try {
+        buf = await downloadMediaMessage(msg, 'buffer', {});
+    } catch (_) {
+        buf = await client.downloadMediaMessage(msg);
+    }
     const mime = (msg.mimetype || msg.msg?.mimetype || 'application/octet-stream');
     const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
     const tmpDir = require('path').join(__dirname, '../tmp');
@@ -80,7 +86,8 @@ const {
         antigroupmention,
     antistatus,
         antimention,
-        antiforward
+        antiforward,
+        autoreact
 } = await fetchSettings(); 
           
     var body = (() => {
@@ -576,55 +583,85 @@ const totalcmds = () => {
     (async () => {
         try {
             const currentTime = Date.now();
-            if (currentTime - lastTextTime < messageDelay) return;
+            if (currentTime - lastTextTime < 1500) return;
+            lastTextTime = currentTime;
 
             await client.sendPresenceUpdate('composing', m.chat);
             const userMessage = budy.trim();
             let aiReply = null;
 
+            // Helper: safely extract string from response
+            const extractText = (r) => {
+                if (!r) return null;
+                const v = r.BK9 || r.result || r.data || r.answer || r.reply || r.text || r.response || r.message;
+                return (typeof v === 'string' && v.trim().length > 1) ? v.trim() : null;
+            };
+
             const aiApis = [
+                // BK9 - most reliable free AI
+                async () => {
+                    const r = await fetchJson(`https://bk9.fun/ai/chatgpt?q=${encodeURIComponent(userMessage)}`);
+                    return extractText(r);
+                },
+                // Siputzx GPT3
                 async () => {
                     const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(userMessage)}`);
-                    return (r?.data && typeof r.data === 'string') ? r.data : (r?.result && typeof r.result === 'string') ? r.result : null;
+                    return extractText(r);
                 },
-                async () => {
-                    const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(userMessage)}`);
-                    return (r?.result && typeof r.result === 'string') ? r.result : (r?.data && typeof r.data === 'string') ? r.data : null;
-                },
-                async () => {
-                    const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(userMessage)}`);
-                    return (r?.result && typeof r.result === 'string') ? r.result : (r?.data && typeof r.data === 'string') ? r.data : null;
-                },
+                // Agatz AI
                 async () => {
                     const r = await fetchJson(`https://api.agatz.xyz/api/ai?message=${encodeURIComponent(userMessage)}`);
-                    return (r?.data && typeof r.data === 'string') ? r.data : (r?.result && typeof r.result === 'string') ? r.result : null;
+                    return extractText(r);
                 },
+                // Dreaded AI
                 async () => {
                     const r = await fetchJson(`https://api.dreaded.site/api/openai?text=${encodeURIComponent(userMessage)}`);
-                    return (r?.result && typeof r.result === 'string') ? r.result : null;
+                    return extractText(r);
+                },
+                // KeithAI
+                async () => {
+                    const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(userMessage)}`);
+                    return extractText(r);
+                },
+                // BotCahx
+                async () => {
+                    const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(userMessage)}`);
+                    return extractText(r);
                 }
             ];
 
             for (const apiFn of aiApis) {
                 try {
                     aiReply = await apiFn();
-                    if (aiReply && aiReply.trim()) break;
-                    else aiReply = null;
-                } catch (_) {}
+                    if (aiReply) break;
+                } catch (_) { aiReply = null; }
             }
 
             if (aiReply) {
-                await m.reply(aiReply.trim());
-                lastTextTime = currentTime;
-            } else {
-                console.error('[Chatbot] All AI APIs returned no result.');
+                await m.reply(aiReply);
             }
         } catch (e) {
-            console.error('[Chatbot] Critical Error:', e.message);
+            // silently ignore chatbot errors
         }
     })();
     // IMPORTANT: do NOT return here — fall through so commands still get processed
   }
+
+//========================================================================================================================//
+// ── AUTOREACT: react to every incoming message with a random emoji ──────────
+if (autoreact && autoreact !== 'off' && !itsMe && !m.isBaileys) {
+    const inDm = m.chat.endsWith('@s.whatsapp.net');
+    const inGroup = m.chat.endsWith('@g.us');
+    const shouldReact =
+        autoreact === 'all' ||
+        (autoreact === 'dm' && inDm) ||
+        (autoreact === 'group' && inGroup);
+    if (shouldReact) {
+        const reacts = ['❤️','🔥','😂','😍','🥳','💯','✅','👏','💥','😎','🎉','🤩','🙌','💪','🫡'];
+        const randomEmoji = reacts[Math.floor(Math.random() * reacts.length)];
+        client.sendMessage(m.chat, { react: { text: randomEmoji, key: m.key } }).catch(() => {});
+    }
+}
 //========================================================================================================================//
 if (antitag === 'on' && !Owner && isBotAdmin && !isAdmin && m.mentionedJid && m.mentionedJid.length > 10) {
         if (itsMe) return;
@@ -844,6 +881,7 @@ let cap = `
 │ ⬡ setreactemojie
 │ ⬡ antimention
 │ ⬡ antiforward
+│ ⬡ autoreact [dm/group/all/off]
 ┗▣
 
 ┏▣ 👑 *OWNER ACCESS* 👑
@@ -1093,6 +1131,7 @@ let cap = `
 ┗▣
 
 ┏▣ 📦 *EXTRAS* 📦
+│ ✦ getpp/pp/pfp — get profile picture
 │ ✦ bible
 │ ✦ quran
 │ ✦ pair
@@ -1465,27 +1504,27 @@ case 'gs': {
             const q = text || ""; 
 
             if (/image/.test(mime)) {
-                const buffer = await client.downloadMediaMessage(m.quoted);
+                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.jpg`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.image = { url: tempFilePath };
                 payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/video/.test(mime)) {
-                const buffer = await client.downloadMediaMessage(m.quoted);
+                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.mp4`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.video = { url: tempFilePath };
                 payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/audio/.test(mime)) {
-                const buffer = await client.downloadMediaMessage(m.quoted);
+                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.mp3`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.audio = { url: tempFilePath };
 
             } else if (/webp/.test(mime)) {
-                const buffer = await client.downloadMediaMessage(m.quoted);
+                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.webp`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.sticker = { url: tempFilePath };
@@ -5972,7 +6011,7 @@ https://github.com/sesco001/KING-MD
     if (!quoted) throw `Send or tag an image with the caption ${prefix + command}`; 
     if (!/image/.test(mime)) throw `Send or tag an image with the caption ${prefix + command}`; 
     if (/webp/.test(mime)) throw `Send or tag an image with the caption ${prefix + command}`; 
-    let mediaBuf = await client.downloadMediaMessage(quoted); 
+    let mediaBuf = await downloadMediaMessage(quoted, 'buffer', {}); 
     await client.updateProfilePicture(m.chat, mediaBuf);
     reply('Group icon updated Successfully✅️'); 
     } 
@@ -6871,7 +6910,7 @@ break;
     if (!quoted) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     if (!/image/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     if (/webp/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
-    let mediaBuf2 = await client.downloadMediaMessage(quoted);
+    let mediaBuf2 = await downloadMediaMessage(quoted, 'buffer', {});
     await client.updateProfilePicture(botNumber, mediaBuf2);
     reply('Bot\'s profile picture has been successfully updated✅️'); 
           }
@@ -7588,6 +7627,78 @@ case 'currency': case 'convert': {
         m.reply(`💱 *Currency Converter*\n\n*${amount} ${from}* = *${result.toFixed(4)} ${to}*\n\n_Rate: 1 ${from} = ${(result/amount).toFixed(6)} ${to}_`);
     } catch (e) {
         m.reply("❌ Currency conversion failed. Check your input and try again.");
+    }
+}
+break;
+
+//========================================================================================================================//
+case 'autoreact': {
+    if (!Owner) throw NotOwner;
+    const { getSettings: _gs2 } = require('../Database/config');
+    const _s2 = await _gs2();
+    const cur = _s2.autoreact || 'off';
+    const validModes = ['off', 'dm', 'group', 'all'];
+    if (!text) return reply(
+        `⚡ *Auto React Status:* *${cur.toUpperCase()}*\n\n` +
+        `Usage: ${prefix}autoreact [dm/group/all/off]\n` +
+        `• *dm* — react in private chats\n` +
+        `• *group* — react in groups\n` +
+        `• *all* — react everywhere\n` +
+        `• *off* — disabled`
+    );
+    if (!validModes.includes(text)) return reply(`❌ Invalid mode. Use: dm / group / all / off`);
+    if (text === cur) return reply(`✅ Autoreact is already set to *${text.toUpperCase()}*`);
+    await updateSetting('autoreact', text);
+    reply(`✅ Autoreact set to *${text.toUpperCase()}*`);
+}
+break;
+
+//========================================================================================================================//
+case 'getpp':
+case 'pp':
+case 'pfp': {
+    try {
+        let target;
+        if (m.quoted) {
+            target = m.quoted.sender;
+        } else if (m.mentionedJid && m.mentionedJid.length > 0) {
+            target = m.mentionedJid[0];
+        } else if (text) {
+            target = text.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
+        } else {
+            target = m.sender;
+        }
+
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+
+        let ppUrl;
+        try {
+            ppUrl = await client.profilePictureUrl(target, 'image');
+        } catch (e) {
+            ppUrl = null;
+        }
+
+        const targetNum = target.split('@')[0];
+        const displayName = m.quoted?.pushName || pushname;
+
+        if (!ppUrl) {
+            // Send default avatar with info
+            await client.sendMessage(m.chat, {
+                image: { url: 'https://i.imgur.com/3PWHSQN.png' },
+                caption: `📸 *Profile Picture*\n\n👤 *Number:* +${targetNum}\n\n_No profile picture set or privacy locked._`
+            }, { quoted: m });
+        } else {
+            await client.sendMessage(m.chat, {
+                image: { url: ppUrl },
+                caption: `📸 *Profile Picture*\n\n👤 *Number:* +${targetNum}\n🔗 _Tap & hold → Save to download_`
+            }, { quoted: m });
+        }
+
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+    } catch (err) {
+        logError('GETPP', err);
+        reply(`❌ Failed to fetch profile picture: ${err.message}`);
     }
 }
 break;
