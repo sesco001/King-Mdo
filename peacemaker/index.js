@@ -115,31 +115,46 @@ async function startPeace() {
     
     if (connection === "close") {
       let reason = new Boom(lastDisconnect?.error)?.output.statusCode;
-      if (reason !== DisconnectReason.loggedOut) startPeace();
+      if (reason !== DisconnectReason.loggedOut) {
+        setTimeout(startPeace, 3000);
+      } else {
+        console.log(chalk.red("⛔ KING-M LOGGED OUT — please update SESSION"));
+      }
     } else if (connection === "open") {
       await initializeDatabase();
       const { mode, prefix } = await fetchSettings();
-      console.log(chalk.green("✅ KING-M CONNECTED"));
+      const num = client.user?.id?.split(':')[0] || 'unknown';
+      const name = client.user?.name || 'KING-M';
+      console.log('');
+      console.log(chalk.bold.green('╔══════════════════════════════╗'));
+      console.log(chalk.bold.green('║') + chalk.bold.white('       KING-M BOT ACTIVE       ') + chalk.bold.green('║'));
+      console.log(chalk.bold.green('╚══════════════════════════════╝'));
+      console.log(chalk.cyan(`  📱 Number  : +${num}`));
+      console.log(chalk.cyan(`  👤 Name    : ${name}`));
+      console.log(chalk.cyan(`  🎯 Mode    : ${mode}`));
+      console.log(chalk.cyan(`  ⚡ Prefix  : ${prefix}`));
+      console.log(chalk.cyan(`  🕐 Time    : ${new Date().toLocaleString()}`));
+      console.log(chalk.bold.green('══════════════════════════════════'));
+      console.log('');
 
-      // AUTOFOLLOW & AUTOJOIN (RESTORED)
+      // AUTOFOLLOW & AUTOJOIN
       setTimeout(async () => {
         try {
           await client.newsletterFollow('120363425782251560@newsletter');
           await client.groupAcceptInvite('CjBNEKIJq6VE2vrJLDSQ2Z');
-          console.log(chalk.blue("✅ Autojoin/Follow Success"));
         } catch (e) {}
       }, 5000);
 
-      client.sendMessage(client.user.id, { text: `🔶 KING MD CONNECTED\nMode: ${mode}\nPrefix: ${prefix}` });
+      client.sendMessage(client.user.id, { text: `🟢 *KING-M ONLINE*\n📱 +${num}\n🎯 Mode: ${mode}\n⚡ Prefix: ${prefix}` });
     }
   });
 
   client.ev.on("creds.update", saveCreds);
 }
 
-// START EXPRESS SERVER FIRST (Crucial for Heroku health check)
+// START EXPRESS SERVER FIRST
 app.get("/", (req, res) => res.status(200).send("KING-M Bot is Active"));
 app.listen(port, "0.0.0.0", () => {
-    console.log(`📡 Server on port ${port}`);
+    console.log(chalk.bold.yellow(`\n  ⚡ KING-M starting up on port ${port} ...\n`));
     startPeace();
 });
