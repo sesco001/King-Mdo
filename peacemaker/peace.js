@@ -269,9 +269,10 @@ function handleIncomingMessage(message) {
 // ================== FIXED STABLE ANTIDELETE SYSTEM ==================
 const messageStore = new Map();
 const deletionProcessed = new Set();
+const editProcessed = new Set();
 
-// Auto-clean the dedup set every 60 seconds
-setInterval(() => deletionProcessed.clear(), 60000);
+// Auto-clean the dedup sets every 60 seconds
+setInterval(() => { deletionProcessed.clear(); editProcessed.clear(); }, 60000);
 
 // Helper to store only valid messages
 function storeIncomingMessage(mek) {
@@ -286,9 +287,11 @@ function storeIncomingMessage(mek) {
 
 async function handleDeletedMessage(client, mek, antideleteMode) {
     try {
-        const deletedMsgId = mek.message.protocolMessage.key.id;  
+        const deletedMsgId = mek.message.protocolMessage.key.id;
         if (deletionProcessed.has(deletedMsgId)) return; // dedup
         deletionProcessed.add(deletedMsgId);
+        // If the bot itself sent this deletion (e.g. antisticker), never restore it
+        if (mek.key.fromMe) return;
         const originalMessage = messageStore.get(deletedMsgId);  
         if (!originalMessage) return;  
 
@@ -363,6 +366,9 @@ client.ev.on('messages.upsert', async ({ messages }) => {
 
         if (isEdit && editedProto) {
             try {
+                if (editProcessed.has(editedMsgId)) return; // dedup
+                editProcessed.add(editedMsgId);
+                if (mek.key.fromMe) return; // ignore bot's own edits
                 const originalMessage = messageStore.get(editedMsgId);
                 const editorJid = mek.participant || mek.key.remoteJid;
                 const remoteJid = mek.key.remoteJid;
