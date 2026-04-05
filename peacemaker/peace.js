@@ -15,9 +15,27 @@ const messageDelay = 3000;
 
 // Polyfill for downloadAndSaveMediaMessage (removed in newer Baileys)
 const _downloadAndSave = async (client, msg) => {
-    // Use module-level downloadMediaMessage import (works without client method)
     let buf;
-    buf = await downloadMediaMessage(msg, 'buffer', {});
+    // msg may be an smsg-enhanced m.quoted (inner media content, not a WAMessage).
+    // fakeObj is the proper WAMessage ({key, message}) built by peacefunc.js.
+    // downloadMediaMessage requires a WAMessage — use fakeObj when available.
+    const waMsg = msg.fakeObj || msg;
+    try {
+        buf = await downloadMediaMessage(waMsg, 'buffer', {});
+    } catch (e) {
+        // Fallback: stream directly from the inner media message fields
+        const rawMtype = msg.mtype || '';
+        const rawMime = msg.mimetype || '';
+        let mtype = 'document';
+        if (rawMtype.includes('image') || rawMime.startsWith('image')) mtype = 'image';
+        else if (rawMtype.includes('video') || rawMime.startsWith('video')) mtype = 'video';
+        else if (rawMtype.includes('audio') || rawMime.startsWith('audio')) mtype = 'audio';
+        else if (rawMtype.includes('sticker')) mtype = 'image';
+        const mediaMsg = waMsg.message?.[Object.keys(waMsg.message || {})[0]] || msg;
+        const stream = await downloadContentFromMessage(mediaMsg, mtype);
+        buf = Buffer.from([]);
+        for await (const chunk of stream) buf = Buffer.concat([buf, chunk]);
+    }
     const mime = (msg.mimetype || msg.msg?.mimetype || 'application/octet-stream');
     const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
     const tmpDir = require('path').join(__dirname, '../tmp');
@@ -1507,27 +1525,27 @@ case 'gs': {
             const q = text || ""; 
 
             if (/image/.test(mime)) {
-                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.jpg`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.image = { url: tempFilePath };
                 payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/video/.test(mime)) {
-                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.mp4`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.video = { url: tempFilePath };
                 payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/audio/.test(mime)) {
-                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.mp3`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.audio = { url: tempFilePath };
 
             } else if (/webp/.test(mime)) {
-                const buffer = await downloadMediaMessage(m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath = path.join(tempDir, `status_${Date.now()}.webp`);
                 fs.writeFileSync(tempFilePath, buffer);
                 payload.groupStatusMessage.sticker = { url: tempFilePath };
@@ -4946,7 +4964,7 @@ case 'newspic': case 'channelpic': {
     if (!jid) return m.reply('❌ Usage: newspic <jid> — reply to an image');
     if (!m.quoted || !['imageMessage'].includes(m.quoted.mtype)) return m.reply('❌ Reply to an image with this command.');
     try {
-        const imgBuffer = await downloadMediaMessage(m.quoted, 'buffer', {});
+        const imgBuffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
         await client.newsletterUpdatePicture(jid, imgBuffer);
         m.reply(`✅ Channel picture updated!`);
     } catch (e) {
