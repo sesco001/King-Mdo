@@ -72,20 +72,18 @@ const {
         antiforward
 } = await fetchSettings(); 
           
-    var body =
-      m.mtype === "conversation"
-        ? m.message.conversation
-        : m.mtype == "extendedTextMessage"
-        ? m.message.extendedTextMessage.text
-        : m.mtype == "buttonsResponseMessage"
-        ? m.message.buttonsResponseMessage.selectedButtonId
-        : m.mtype == "listResponseMessage"
-        ? m.message.listResponseMessage.singleSelectReply.selectedRowId
-        : m.mtype == "templateButtonReplyMessage"
-        ? m.message.templateButtonReplyMessage.selectedId
-        : m.mtype === "messageContextInfo"
-        ? m.message.buttonsResponseMessage?.selectedButtonId || m.message.listResponseMessage?.singleSelectReply.selectedRowId || m.text
-        : "";
+    var body = (() => {
+      try {
+        if (!m.message) return "";
+        if (m.mtype === "conversation") return m.message.conversation || "";
+        if (m.mtype === "extendedTextMessage") return m.message.extendedTextMessage?.text || "";
+        if (m.mtype === "buttonsResponseMessage") return m.message.buttonsResponseMessage?.selectedButtonId || "";
+        if (m.mtype === "listResponseMessage") return m.message.listResponseMessage?.singleSelectReply?.selectedRowId || "";
+        if (m.mtype === "templateButtonReplyMessage") return m.message.templateButtonReplyMessage?.selectedId || "";
+        if (m.mtype === "messageContextInfo") return m.message.buttonsResponseMessage?.selectedButtonId || m.message.listResponseMessage?.singleSelectReply?.selectedRowId || m.text || "";
+        return "";
+      } catch (_) { return ""; }
+    })();
     var budy = typeof m.text == "string" ? m.text : "";
     var msgR = m.message.extendedTextMessage?.contextInfo?.quotedMessage;  
 //========================================================================================================================//

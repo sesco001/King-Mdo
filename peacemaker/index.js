@@ -18,7 +18,7 @@ const qrcode = require("qrcode-terminal");
 const app = express();
 
 // FIX 1: Heroku Port Binding (Mandatory for H10 Fix)
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 5000;
 
 const authenticationn = require('./auth');
 const { initializeDatabase } = require('../Database/config');
@@ -93,7 +93,7 @@ async function startPeace() {
       require("./peace")(client, m, chatUpdate, store);
       
     } catch (err) {
-      console.log(chalk.red('[MSG ERROR]'), err.message);
+      console.log(chalk.red('[MSG ERROR]'), err.message, err.stack?.split('\n')[1]?.trim() || '');
     }
   });
 

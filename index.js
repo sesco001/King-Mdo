@@ -1,15 +1,17 @@
 /**
  * KING-M Entry Point
  *
- * On Replit  → acts as an API gateway that proxies to the VPS deployer.
- * Everywhere else (Heroku, Render, Panel, Docker, VPS-direct) → starts
- * the real WhatsApp bot from peacemaker/index.js.
+ * Logic:
+ *  - If SESSION env var is set → run the real WhatsApp bot (works on any host including Replit).
+ *  - If on Replit WITHOUT SESSION → act as API gateway that proxies to the VPS deployer.
+ *  - Everywhere else (Heroku, Render, Panel, Docker, VPS-direct) → start the real bot.
  */
 
+const SESSION = process.env.SESSION || '';
 const isReplit = !!(process.env.REPL_ID || process.env.REPL_SLUG);
 
-if (isReplit) {
-  // ─── REPLIT: lightweight gateway that proxies to the VPS deployer ──────────
+if (isReplit && !SESSION) {
+  // ─── REPLIT (no session): lightweight gateway that proxies to the VPS deployer ──────
   const express = require('express');
   const axios   = require('axios');
 
@@ -116,6 +118,6 @@ if (isReplit) {
   });
 
 } else {
-  // ─── HEROKU / RENDER / PANEL / DOCKER / VPS-DIRECT: start the real bot ─────
+  // ─── SESSION is set OR non-Replit host: start the real WhatsApp bot ─────────
   require('./peacemaker/index.js');
 }
