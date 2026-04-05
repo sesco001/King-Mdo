@@ -131,8 +131,9 @@ const {
 //========================================================================================================================//      
     const Heroku = require("heroku-client");  
     
-    // FIX 1: Robust body handling to prevent .toString() and .replace() crashes
-    const messageBody = body || ""; 
+    // Use budy (m.text from smsg) as primary source — it handles ALL WhatsApp message types.
+    // Fall back to body only if budy is empty (e.g. media-only messages).
+    const messageBody = budy || body || ""; 
     const command = messageBody.startsWith(prefix) 
         ? messageBody.replace(prefix, "").trim().split(/ +/).shift().toLowerCase() 
         : "";
@@ -186,7 +187,7 @@ const dev = "254769995625";
 //========================================================================================================================//      
     const mime = (quoted.msg || quoted).mimetype || "";
     const qmsg = (quoted.msg || quoted);
-    const cmd = body.startsWith(prefix);
+    const cmd = messageBody.startsWith(prefix);
 
 //========================================================================================================================//                  
 //========================================================================================================================//          
