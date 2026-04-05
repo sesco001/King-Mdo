@@ -12,7 +12,18 @@ const Genius = require("genius-lyrics");
 const yts = require("yt-search");
 let lastTextTime = 0;
 const messageDelay = 3000;
-// Add these helper functions at the top of peacemaker/peace.js
+
+// Polyfill for downloadAndSaveMediaMessage (removed in newer Baileys)
+const _downloadAndSave = async (client, msg) => {
+    const buf = await client.downloadMediaMessage(msg);
+    const mime = (msg.mimetype || msg.msg?.mimetype || 'application/octet-stream');
+    const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
+    const tmpDir = require('path').join(__dirname, '../tmp');
+    if (!require('fs').existsSync(tmpDir)) require('fs').mkdirSync(tmpDir, { recursive: true });
+    const tmpFile = require('path').join(tmpDir, `km_${Date.now()}.${ext}`);
+    require('fs').writeFileSync(tmpFile, buf);
+    return tmpFile;
+};
 
 // Updated logError in peacemaker/peace.js
 const logError = (command, err) => {
@@ -465,14 +476,15 @@ if (m.isGroup && antistatus === 'on' && !isAdmin && !Owner && isBotAdmin) {
     if (isStatusTag) {
         try {
             await client.sendMessage(m.chat, { delete: m.key });
-            await sleep(1000); 
+            await sleep(800); 
             await client.sendMessage(m.chat, {
-                text: `⚠️ *ANTI-TAG* @${m.sender.split('@')[0]}, status tagging is prohibited!`,
+                text: `⚠️ *ANTI-GROUP MENTION* @${m.sender.split('@')[0]}, tagging via status is not allowed here!`,
                 mentions: [m.sender]
             });
         } catch (err) {
             console.error('Anti-Status Error:', err.message);
         }
+        return; // Stop further processing of this message
     }
 }
 // ================================================================
@@ -559,64 +571,60 @@ const totalcmds = () => {
     (chatbot === 'group' && m.chat.endsWith('@g.us')) ||
     (chatbot === 'all');
 
-  if (chatbotActive) {
-    // Don't respond to yourself, commands, or empty/very short messages
-    if (itsMe) return;
-    if (budy.startsWith(prefix)) return; // it's a command, skip
-    if (!budy || budy.trim().length < 2) return;
+  // Chatbot: only handle non-command, non-self messages — let commands through always
+  if (chatbotActive && !itsMe && budy && !budy.startsWith(prefix) && budy.trim().length >= 2) {
+    (async () => {
+        try {
+            const currentTime = Date.now();
+            if (currentTime - lastTextTime < messageDelay) return;
 
-    try {
-        const currentTime = Date.now();
-        
-        // Rate Limiting: 3 seconds between replies
-        if (currentTime - lastTextTime < messageDelay) {
-            console.log('[Chatbot] Rate limit active, skipping.');
-            return;
-        }
+            await client.sendPresenceUpdate('composing', m.chat);
+            const userMessage = budy.trim();
+            let aiReply = null;
 
-        await client.sendPresenceUpdate('composing', m.chat);
+            const aiApis = [
+                async () => {
+                    const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(userMessage)}`);
+                    return (r?.data && typeof r.data === 'string') ? r.data : (r?.result && typeof r.result === 'string') ? r.result : null;
+                },
+                async () => {
+                    const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(userMessage)}`);
+                    return (r?.result && typeof r.result === 'string') ? r.result : (r?.data && typeof r.data === 'string') ? r.data : null;
+                },
+                async () => {
+                    const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(userMessage)}`);
+                    return (r?.result && typeof r.result === 'string') ? r.result : (r?.data && typeof r.data === 'string') ? r.data : null;
+                },
+                async () => {
+                    const r = await fetchJson(`https://api.agatz.xyz/api/ai?message=${encodeURIComponent(userMessage)}`);
+                    return (r?.data && typeof r.data === 'string') ? r.data : (r?.result && typeof r.result === 'string') ? r.result : null;
+                },
+                async () => {
+                    const r = await fetchJson(`https://api.dreaded.site/api/openai?text=${encodeURIComponent(userMessage)}`);
+                    return (r?.result && typeof r.result === 'string') ? r.result : null;
+                }
+            ];
 
-        const userMessage = budy.trim(); // use FULL message, not just args
-        let aiReply = null;
-
-        const aiApis = [
-            async () => {
-                const r = await fetchJson(`https://api.siputzx.my.id/api/ai/gpt3?text=${encodeURIComponent(userMessage)}`);
-                return r?.data || r?.result || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://api.botcahx.eu.org/api/ai/gpt4?text=${encodeURIComponent(userMessage)}`);
-                return r?.result || r?.data || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://apiskeith.top/keithai?q=${encodeURIComponent(userMessage)}`);
-                return r?.result || r?.data || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://api.agatz.xyz/api/ai?message=${encodeURIComponent(userMessage)}`);
-                return r?.data || r?.result || null;
+            for (const apiFn of aiApis) {
+                try {
+                    aiReply = await apiFn();
+                    if (aiReply && aiReply.trim()) break;
+                    else aiReply = null;
+                } catch (_) {}
             }
-        ];
 
-        for (const apiFn of aiApis) {
-            try {
-                aiReply = await apiFn();
-                if (aiReply && typeof aiReply === 'string' && aiReply.trim()) break;
-                else aiReply = null;
-            } catch (_) {}
+            if (aiReply) {
+                await m.reply(aiReply.trim());
+                lastTextTime = currentTime;
+            } else {
+                console.error('[Chatbot] All AI APIs returned no result.');
+            }
+        } catch (e) {
+            console.error('[Chatbot] Critical Error:', e.message);
         }
-
-        if (aiReply) {
-            await m.reply(aiReply.trim());
-            lastTextTime = currentTime;
-        } else {
-            console.error('[Chatbot] All AI APIs returned no result.');
-        }
-
-    } catch (e) {
-        console.error('[Chatbot] Critical Error:', e.message);
-    }
-}
+    })();
+    // IMPORTANT: do NOT return here — fall through so commands still get processed
+  }
 //========================================================================================================================//
 if (antitag === 'on' && !Owner && isBotAdmin && !isAdmin && m.mentionedJid && m.mentionedJid.length > 10) {
         if (itsMe) return;
@@ -861,23 +869,21 @@ let cap = `
 ┗▣
 
 ┏▣ 📥 *DOWNLOAD SUITE* 📥
-│ ⚡ video
-│ ⚡ video2
-│ ⚡ play
-│ ⚡ play2
-│ ⚡ song
-│ ⚡ song2
-│ ⚡ fbdl
-│ ⚡ tiktok
-│ ⚡ twitter
-│ ⚡ instagram
-│ ⚡ pinterest
-│ ⚡ movie
-│ ⚡ lyrics
-│ ⚡ whatsong
-│ ⚡ yts
-│ ⚡ ytmp3
-│ ⚡ ytmp4
+│ ⚡ ytmp3/yta    — YouTube → MP3
+│ ⚡ ytmp4/ytv    — YouTube → MP4
+│ ⚡ spotify/spdt — Spotify → MP3
+│ ⚡ tiktok/tt    — TikTok video
+│ ⚡ instagram/ig — Instagram media
+│ ⚡ facebook/fb  — Facebook video
+│ ⚡ twitter      — Twitter/X video
+│ ⚡ pinterest/pin— Pinterest media
+│ ⚡ play/play2   — YouTube music
+│ ⚡ video/video2 — YouTube video
+│ ⚡ song/song2   — Song search
+│ ⚡ lyrics       — Song lyrics
+│ ⚡ shazam       — Identify a song
+│ ⚡ yts          — YouTube search
+│ ⚡ movie        — Movie info
 ┗▣
 
 ┏▣ 🧩 *CONVERTER HUB* 🧩
@@ -1077,6 +1083,13 @@ let cap = `
 │ 🎭 animegirl
 │ 🎭 quotes
 │ 🎭 pickupline
+│ 🎭 truth       — Random truth question
+│ 🎭 dare        — Random dare challenge
+│ 🎭 wyr         — Would you rather
+│ 🎭 8ball       — Magic 8-ball
+│ 🎭 country     — Country information
+│ 🎭 currency    — Currency converter
+│ 🎭 apk         — Download Android APK
 ┗▣
 
 ┏▣ 📦 *EXTRAS* 📦
@@ -3516,7 +3529,7 @@ break;
         m.reply("𝗔 𝗺𝗼𝗺𝗲𝗻𝘁, 𝗹𝗲𝗺𝗺𝗲 𝗮𝗻𝗮𝗹𝘆𝘀𝗲 𝘁𝗵𝗲 𝗰𝗼𝗻𝘁𝗲𝗻𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 𝗜𝗺𝗮𝗴𝗲...");
 
         // 3. Download the image and upload to Catbox (or your preferred uploader)
-        let media = await client.downloadAndSaveMediaMessage(m.quoted);
+        let media = await _downloadAndSave(client, m.quoted);
         let imageUrl = await uploadToCatbox(media);
 
         // 4. Call the Keith AI Vision API
@@ -3547,7 +3560,7 @@ if (!m.quoted) return m.reply("Send the image then tag it with the instruction."
 if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝘀𝗼𝗺𝗲 𝗶𝗻𝘀𝘁𝗿𝘂𝗰𝘁𝗶𝗼𝗻𝘀 𝗲𝗵! 𝗧𝗵𝗶𝘀 KING 𝗔𝗶 𝗨𝘀𝗲 𝗚𝗲𝗺𝗶𝗻𝗶-𝗽𝗿𝗼-𝘃𝗶𝘀𝗶𝗼𝗻 𝘁𝗼 𝗮𝗻𝗮𝗹𝘆𝘀𝗲 𝗶𝗺𝗮𝗴𝗲𝘀.");
 if (!/image|pdf/.test(mime)) return m.reply("That is not an image, try again while quoting an actual image.");             
 
-                    let fdr = await client.downloadAndSaveMediaMessage(m.quoted)
+                    let fdr = await _downloadAndSave(client, m.quoted)
                     let fta = await uploadToCatbox(fdr)
                     m.reply(`𝗔 𝗠𝗼𝗺𝗲𝗻𝘁, KING[KING-M] 𝗶𝘀 𝗮𝗻𝗮𝗹𝘆𝘇𝗶𝗻𝗴 𝘁𝗵𝗲 𝗰𝗼𝗻𝘁𝗲𝗻𝘁𝘀 𝗼𝗳 𝘁𝗵𝗲 ${mime.includes("pdf") ? "𝗣𝗗𝗙" : "𝗜𝗺𝗮𝗴𝗲"} . . .`);
 
@@ -3922,14 +3935,14 @@ if (Owner && quotedMessage && textL.startsWith(prefix + "save") && m.quoted.chat
     
     if (quotedMessage.imageMessage) {
       let imageCaption = quotedMessage.imageMessage.caption;
-      let imageUrl = await client.downloadAndSaveMediaMessage(quotedMessage.imageMessage);
-      client.sendMessage(m.chat, { image: { url: imageUrl }, caption: imageCaption });
+      let imgBuf = await client.downloadMediaMessage(quotedMessage.imageMessage);
+      client.sendMessage(m.chat, { image: imgBuf, caption: imageCaption });
     }
 
     if (quotedMessage.videoMessage) {
       let videoCaption = quotedMessage.videoMessage.caption;
-      let videoUrl = await client.downloadAndSaveMediaMessage(quotedMessage.videoMessage);
-      client.sendMessage(m.chat, { video: { url: videoUrl }, caption: videoCaption });
+      let vidBuf = await client.downloadMediaMessage(quotedMessage.videoMessage);
+      client.sendMessage(m.chat, { video: vidBuf, caption: videoCaption });
     }
      }
       }
@@ -4045,7 +4058,7 @@ const cap = "ᴇᴅɪᴛᴇᴅ ʙʏ KING M";
 if (!m.quoted) return m.reply("Send the image then tag it with the command.");
 if (!/image/.test(mime)) return m.reply("That is not an image, try again while quoting an actual image.");             
 
-let fdr = await client.downloadAndSaveMediaMessage(m.quoted)
+let fdr = await _downloadAndSave(client, m.quoted)
 let fta = await uploadToCatbox(fdr)
                     m.reply("𝗔 𝗺𝗼𝗺𝗲𝗻𝘁, KING 𝗶𝘀 𝗲𝗿𝗮𝘀𝗶𝗻𝗴 𝘁𝗵𝗲 𝗯𝗮𝗰𝗸𝗴𝗿𝗼𝘂𝗻𝗱. . .");
 
@@ -4255,7 +4268,7 @@ let mediaBuffer = await q.download()
 let isTele = /image\/(png|jpe?g|gif)|video\/mp4/.test(mime)
 
 if (isTele) {
-    let fta2 = await client.downloadAndSaveMediaMessage(q)
+    let fta2 = await _downloadAndSave(client, q)
     let link = await uploadtoimgur(fta2)
 
     const fileSizeMB = (mediaBuffer.length / (1024 * 1024)).toFixed(2)
@@ -4282,7 +4295,7 @@ let mediaBuffer = await q.download()
 let isTele = /image\/(png|jpe?g|gif)|video\/mp4/.test(mime)
 
 if (isTele) {
-    let fta2 = await client.downloadAndSaveMediaMessage(q)
+    let fta2 = await _downloadAndSave(client, q)
     let link = await uploadToCatbox(fta2)
 
     const fileSizeMB = (mediaBuffer.length / (1024 * 1024)).toFixed(2)
@@ -4314,7 +4327,7 @@ if (isTele) {
            
                 atas = text.split('|')[0] ? text.split('|')[0] : '-'
                 bawah = text.split('|')[1] ? text.split('|')[1] : '-'
-                let dwnld = await client.downloadAndSaveMediaMessage(qmsg)
+                let dwnld = await _downloadAndSave(client, qmsg)
                 let fatGans = await uploadToCatbox(dwnld)
                 let smeme = `https://api.memegen.link/images/custom/${encodeURIComponent(bawah)}/${encodeURIComponent(atas)}.png?background=${fatGans}`
                 let pop = await client.sendImageAsSticker(m.chat, smeme, m, {
@@ -4490,7 +4503,7 @@ await client.sendMessage(m.chat, { text: `Quoted text is your token. To fetch me
        case "hacker2": {
        if (!/image/.test(mime)) return m.reply("Hello hacker 👋, quote an image, probably a clear image of yourself or a person.");  
 
-let fdr = await client.downloadAndSaveMediaMessage(qmsg);
+let fdr = await _downloadAndSave(client, qmsg);
 
 const fta = await uploadToCatbox(fdr);
 
@@ -5302,49 +5315,72 @@ case 'fbdl': {
 break;
        
 //========================================================================================================================//                  
-      case "tiktok": case "tikdl":  {
-if (!text) {
-    return m.reply('Please provide a TikTok video link.');
-  }
-              
-if (!text.includes("tiktok.com")) {
-        return m.reply("That is not a TikTok link.");
-}
-await client.sendMessage(m.chat, {
-      react: { text: '✅️', key: m.key }
-    });
+      case "tiktok": case "tikdl": case "tt": {
+if (!text) return m.reply('Please provide a TikTok video link.\nExample: .tiktok https://vm.tiktok.com/xxx');
+if (!/tiktok\.com|vm\.tiktok\.com/.test(text)) return m.reply("That is not a valid TikTok link.");
 
- try {
-    const response = await axios.get(`https://api.bk9.dev/download/tiktok?url=${encodeURIComponent(text)}`);
+try {
+    await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-    if (response.data.status && response.data.BK9) {
-      const videoUrl = response.data.BK9.BK9;
-      const description = response.data.BK9.desc;
-      const commentCount = response.data.BK9.comment_count;
-      const likesCount = response.data.BK9.likes_count;
-      const uid = response.data.BK9.uid;
-      const nickname = response.data.BK9.nickname;
-      const musicTitle = response.data.BK9.music_info.title;
+    let videoUrl = null, audioUrl = null, title = 'TikTok Video', author = '';
 
-      await client.sendMessage(m.chat, {
-        text: `Data fetched successfully✅ wait a moment. . .`,
-      }, { quoted: m });
+    const tikApis = [
+        async () => {
+            const d = await fetchJson(`https://api.siputzx.my.id/api/d/tiktok?url=${encodeURIComponent(text)}`);
+            if (d?.data?.video) { title = d.data.desc || title; author = d.data.author?.nickname || ''; return { video: d.data.video, audio: d.data.audio }; }
+            return null;
+        },
+        async () => {
+            const d = await fetchJson(`https://api.agatz.xyz/api/tiktok?url=${encodeURIComponent(text)}`);
+            const v = d?.data?.video_no_wm || d?.data?.video || d?.data?.play;
+            if (v) { title = d.data?.title || title; return { video: v }; }
+            return null;
+        },
+        async () => {
+            const d = await fetchJson(`https://api.dreaded.site/api/tiktok?url=${encodeURIComponent(text)}`);
+            const v = d?.result?.nowm || d?.result?.video || d?.result?.play;
+            if (v) { title = d.result?.title || title; return { video: v }; }
+            return null;
+        },
+        async () => {
+            const res = await axios.get(`https://api.bk9.dev/download/tiktok?url=${encodeURIComponent(text)}`);
+            if (res.data?.status && res.data?.BK9) {
+                const v = res.data.BK9.BK9;
+                title = res.data.BK9.desc || title;
+                author = res.data.BK9.nickname || '';
+                return { video: v };
+            }
+            return null;
+        }
+    ];
 
-      await client.sendMessage(m.chat, {
-        video: { url: videoUrl },
-        caption: "𝙳𝙾𝚆𝙽𝙻𝙾𝙰𝙳𝙴𝙳  𝙱𝚈 KING M",
-        gifPlayback: false
-      }, { quoted: m });
-
-    } else {
-      reply('Failed to retrieve video from the provided link.');
+    let dlResult = null;
+    for (const fn of tikApis) {
+        try { dlResult = await fn(); if (dlResult?.video) break; } catch (_) {}
     }
 
-  } catch (e) {
-    reply(`An error occurred during download: ${e.message}`);
-  }
+    if (!dlResult?.video) {
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+        return m.reply("❌ Failed to download TikTok video. Try again.");
+    }
+
+    videoUrl = dlResult.video;
+
+    await client.sendMessage(m.chat, {
+        video: { url: videoUrl },
+        caption: `🎵 *${title.slice(0, 200)}*${author ? `\n👤 *@${author}*` : ''}\n\n_Downloaded by KING-M_`,
+        gifPlayback: false
+    }, { quoted: m });
+
+    await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+
+} catch (e) {
+    console.error('[TikTok]', e.message);
+    m.reply(`❌ TikTok download failed: ${e.message}`);
+    await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
 }
-  break;
+}
+break;
 
 //========================================================================================================================//
   case "pinterest": case "pin":
@@ -5936,8 +5972,8 @@ https://github.com/sesco001/KING-MD
     if (!quoted) throw `Send or tag an image with the caption ${prefix + command}`; 
     if (!/image/.test(mime)) throw `Send or tag an image with the caption ${prefix + command}`; 
     if (/webp/.test(mime)) throw `Send or tag an image with the caption ${prefix + command}`; 
-    let media = await client.downloadAndSaveMediaMessage(quoted); 
-    await client.updateProfilePicture(m.chat, { url: media }).catch((err) => fs.unlinkSync(media)); 
+    let mediaBuf = await client.downloadMediaMessage(quoted); 
+    await client.updateProfilePicture(m.chat, mediaBuf);
     reply('Group icon updated Successfully✅️'); 
     } 
     break;
@@ -6076,15 +6112,24 @@ case "whatsong": case "shazam": {
         let tempFile = getRandom(ext);
         fs.writeFileSync(tempFile, mediaBuffer);
 
-        // Upload to catbox
+        // Upload to catbox (with pomf.cat as fallback)
         let mediaUrl;
         try {
             mediaUrl = await uploadToCatbox(tempFile);
         } catch (uploadErr) {
-            if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-            return m.reply("❌ Failed to upload the audio for analysis. Try again.");
+            // Fallback: try pomf.cat
+            try {
+                const FormData = require('form-data');
+                const form = new FormData();
+                form.append('files[]', fs.createReadStream(tempFile));
+                const resp = await axios.post('https://pomf.cat/upload.php', form, { headers: form.getHeaders() });
+                mediaUrl = resp.data?.files?.[0]?.url;
+                if (mediaUrl && !mediaUrl.startsWith('http')) mediaUrl = 'https://pomf.cat' + mediaUrl;
+            } catch (_) {}
         }
         if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+
+        if (!mediaUrl) return m.reply("❌ Failed to upload the audio for analysis. Try again.");
 
         // Try multiple Shazam APIs
         let songResult = null;
@@ -6096,19 +6141,22 @@ case "whatsong": case "shazam": {
                 return `🎵 *${d.title || d.track?.title || 'Unknown'}*\n👤 *Artist:* ${d.subtitle || d.track?.subtitle || 'Unknown'}\n🎶 *Genre:* ${d.genres?.primary || 'Unknown'}`;
             },
             async () => {
-                const r = await fetchJson(`https://api.botcahx.eu.org/api/tools/shazam?url=${encodeURIComponent(mediaUrl)}`);
+                const r = await fetchJson(`https://api.agatz.xyz/api/shazam?url=${encodeURIComponent(mediaUrl)}`);
+                const d = r?.data || r?.result;
+                if (!d) return null;
+                if (typeof d === 'object' && d.title) return `🎵 *${d.title}*\n👤 *Artist:* ${d.artist || d.subtitle || 'Unknown'}\n🎶 *Genre:* ${d.genre || 'Unknown'}`;
+                return typeof d === 'string' ? d : null;
+            },
+            async () => {
+                const r = await fetchJson(`https://api.dreaded.site/api/shazam?url=${encodeURIComponent(mediaUrl)}`);
                 const d = r?.result || r?.data;
                 if (!d) return null;
-                if (typeof d === 'string') return d;
-                return `🎵 *${d.title || 'Unknown'}*\n👤 *Artist:* ${d.artist || d.subtitle || 'Unknown'}`;
+                if (typeof d === 'object' && d.title) return `🎵 *${d.title}*\n👤 *Artist:* ${d.artist || d.subtitle || 'Unknown'}`;
+                return typeof d === 'string' ? d : null;
             },
             async () => {
                 const r = await fetchJson(`https://apiskeith.top/ai/shazam?url=${encodeURIComponent(mediaUrl)}`);
-                return r?.result || r?.data || null;
-            },
-            async () => {
-                const r = await fetchJson(`https://api.agatz.xyz/api/shazam?url=${encodeURIComponent(mediaUrl)}`);
-                const d = r?.data || r?.result;
+                const d = r?.result || r?.data;
                 if (!d) return null;
                 return typeof d === 'string' ? d : JSON.stringify(d);
             }
@@ -6396,43 +6444,53 @@ case 'ytsearch':
 
 //========================================================================================================================//                  
 case "ytmp3": case "yta": {
-    const yts = require("yt-search");
     if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝘁𝘂𝗯𝗲 𝗹𝗶𝗻𝗸 𝗼𝗿 𝘀𝗼𝗻𝗴 𝗻𝗮𝗺𝗲!");
 
     try {
         await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
-        // 1. Resolve to a YouTube URL if not already a URL
-        let link, title;
+        // 1. Resolve to a YouTube URL
+        let link, title, thumbnail = '';
         if (/https?:\/\/(www\.)?youtu/.test(text)) {
             link = text;
-            const s = await yts({ videoId: text.match(/(?:v=|youtu\.be\/)([^&?]+)/)?.[1] || '' });
-            title = s?.title || 'Unknown';
+            try {
+                const vid = text.match(/(?:v=|youtu\.be\/)([^&?#]+)/)?.[1];
+                if (vid) { const s = await yts({ videoId: vid }); title = s?.title || 'Unknown'; thumbnail = s?.thumbnail || ''; }
+                else title = 'Unknown';
+            } catch { title = 'Unknown'; }
         } else {
             const search = await yts(text);
             if (!search.all.length) return m.reply("❌ No results found.");
-            link = search.all[0].url;
-            title = search.all[0].title;
+            link = search.all[0].url; title = search.all[0].title; thumbnail = search.all[0].thumbnail || '';
         }
 
-        // 2. Try multiple download APIs with fallback
+        // 2. Try multiple download APIs (vreden is proven to work)
         let downloadUrl = null;
         const mp3Apis = [
             async () => {
-                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`);
-                return d?.data?.url || d?.result?.url || d?.url || null;
-            },
-            async () => {
-                const d = await fetchJson(`https://api.botcahx.eu.org/api/download/ytmp3?url=${encodeURIComponent(link)}`);
-                return d?.result?.download?.url || d?.url || null;
-            },
-            async () => {
-                const d = await fetchJson(`https://apiskeith.top/download/ytmp3?url=${encodeURIComponent(link)}`);
-                return d?.result?.downloadUrl || d?.result?.url || d?.url || null;
+                const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`);
+                const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
             },
             async () => {
                 const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`);
-                return d?.data?.url || d?.url || null;
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`);
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`);
+                const u = d?.result?.url || d?.data?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`);
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
             }
         ];
 
@@ -6446,17 +6504,26 @@ case "ytmp3": case "yta": {
         }
 
         await client.sendMessage(m.chat, {
-            document: { url: downloadUrl },
+            audio: { url: downloadUrl },
             mimetype: "audio/mpeg",
             fileName: `${title}.mp3`,
-            caption: `✨ *KING M YTMP3* ✨\n\n*Title:* ${title}\n*Link:* ${link}`
+            contextInfo: thumbnail ? {
+                externalAdReply: {
+                    title: title,
+                    body: "KING-M MUSIC",
+                    thumbnailUrl: thumbnail,
+                    sourceUrl: link,
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            } : undefined
         }, { quoted: m });
 
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (error) {
-        console.error(error);
-        m.reply("Download failed\n" + error.message);
+        console.error('[ytmp3]', error.message);
+        m.reply("❌ Download failed. Please try again.");
         await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
     }
 }
@@ -6464,42 +6531,53 @@ break;
 //========================================================================================================================//                  
 case 'ytmp4':
 case "ytv": {
-    const yts = require("yt-search");
     if (!text) return m.reply("𝗣𝗿𝗼𝘃𝗶𝗱𝗲 𝗮 𝘃𝗮𝗹𝗶𝗱 𝗬𝗼𝘂𝗧𝘂𝗯𝗲 𝗹𝗶𝗻𝗸 𝗼𝗿 𝘃𝗶𝗱𝗲𝗼 𝗻𝗮𝗺𝗲!");
 
     try {
         await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
         // 1. Resolve URL
-        let link, title;
+        let link, title, thumbnail = '';
         if (/https?:\/\/(www\.)?youtu/.test(text)) {
             link = text;
-            title = 'Video';
+            try {
+                const vid = text.match(/(?:v=|youtu\.be\/)([^&?#]+)/)?.[1];
+                if (vid) { const s = await yts({ videoId: vid }); title = s?.title || 'Video'; thumbnail = s?.thumbnail || ''; }
+                else title = 'Video';
+            } catch { title = 'Video'; }
         } else {
             const search = await yts(text);
             if (!search.all.length) return m.reply("❌ No results found.");
-            link = search.all[0].url;
-            title = search.all[0].title;
+            link = search.all[0].url; title = search.all[0].title; thumbnail = search.all[0].thumbnail || '';
         }
 
-        // 2. Try multiple video download APIs
+        // 2. Try multiple video download APIs (vreden proven first)
         let downloadUrl = null;
         const mp4Apis = [
             async () => {
-                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp4?url=${encodeURIComponent(link)}`);
-                return d?.data?.url || d?.result?.url || d?.url || null;
-            },
-            async () => {
-                const d = await fetchJson(`https://api.botcahx.eu.org/api/download/ytmp4?url=${encodeURIComponent(link)}`);
-                return d?.result?.download?.url || d?.url || null;
-            },
-            async () => {
-                const d = await fetchJson(`https://apiskeith.top/download/video?url=${encodeURIComponent(link)}`);
-                return d?.result?.url || d?.result?.downloadUrl || d?.url || null;
+                const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/video?url=${encodeURIComponent(link)}&quality=720`);
+                const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
             },
             async () => {
                 const d = await fetchJson(`https://api.agatz.xyz/api/ytmp4?url=${encodeURIComponent(link)}`);
-                return d?.data?.url || d?.url || null;
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp4?url=${encodeURIComponent(link)}`);
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.dreaded.site/api/ytdl/video?url=${encodeURIComponent(link)}`);
+                const u = d?.result?.url || d?.data?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp4?url=${encodeURIComponent(link)}`);
+                const u = d?.data?.url || d?.result?.url || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
             }
         ];
 
@@ -6515,15 +6593,25 @@ case "ytv": {
         await client.sendMessage(m.chat, {
             video: { url: downloadUrl },
             mimetype: "video/mp4",
-            caption: `✨ *KING M YTMP4* ✨\n\n*Title:* ${title}\n*Link:* ${link}`,
-            fileName: `${title}.mp4`
+            caption: `✨ *KING-M YTMP4* ✨\n\n*Title:* ${title}\n*Link:* ${link}`,
+            fileName: `${title}.mp4`,
+            contextInfo: thumbnail ? {
+                externalAdReply: {
+                    title: title,
+                    body: "KING-M VIDEO",
+                    thumbnailUrl: thumbnail,
+                    sourceUrl: link,
+                    mediaType: 1,
+                    renderLargerThumbnail: true
+                }
+            } : undefined
         }, { quoted: m });
 
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (error) {
-        console.error("YTMP4 Error:", error);
-        m.reply(`An error occurred: ${error.message}`);
+        console.error('[ytmp4]', error.message);
+        m.reply(`❌ Download failed. Please try again.`);
         await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
     }
 }
@@ -6783,10 +6871,9 @@ break;
     if (!quoted) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     if (!/image/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
     if (/webp/.test(mime)) throw `Tag an image you want to be the bot's profile picture with ${prefix + command}`; 
-    let media = await client.downloadAndSaveMediaMessage(quoted);
-                
-                    await client.updateProfilePicture(botNumber, { url: media }).catch((err) => fs.unlinkSync(media)); 
-    reply `Bot's profile picture has been successfully updated✅️`; 
+    let mediaBuf2 = await client.downloadMediaMessage(quoted);
+    await client.updateProfilePicture(botNumber, mediaBuf2);
+    reply('Bot\'s profile picture has been successfully updated✅️'); 
           }
     break;
 
@@ -7218,6 +7305,293 @@ case "alive2": case "status2": {
     }
 }
 break;
+//========================================================================================================================//
+case 'spotify': case 'spdt': case 'spdl': {
+    if (!text) return m.reply(`🎵 Provide a Spotify track link or song name!\nExample: *${prefix}spotify Shape of You*`);
+    try {
+        await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
+        let songName = text, songUrl = null, songTitle = null, songArtist = null, songCover = null;
+
+        // If it's a Spotify URL — extract track name via API, else use as search query
+        if (/spotify\.com\/track/.test(text)) {
+            const trackId = text.match(/track\/([a-zA-Z0-9]+)/)?.[1];
+            if (trackId) {
+                const meta = await fetchJson(`https://api.siputzx.my.id/api/m/spotify?id=${trackId}`).catch(() => null);
+                songName = meta?.data?.name || text;
+                songTitle = meta?.data?.name;
+                songArtist = meta?.data?.artists?.map(a => a.name)?.join(', ');
+                songCover = meta?.data?.album?.images?.[0]?.url;
+            }
+        }
+
+        // Try multiple Spotify download APIs
+        const spApis = [
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/spotify?q=${encodeURIComponent(songName)}`);
+                if (d?.data?.url) { songTitle = songTitle || d.data.name; songArtist = songArtist || d.data.artist; songCover = songCover || d.data.image; return d.data.url; }
+                return null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.agatz.xyz/api/spotify?q=${encodeURIComponent(songName)}`);
+                if (d?.data?.url) { songTitle = songTitle || d.data.title; songArtist = songArtist || d.data.artist; return d.data.url; }
+                return null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.dreaded.site/api/spotify?q=${encodeURIComponent(songName)}`);
+                const u = d?.result?.url || d?.data?.url;
+                if (u) { songTitle = songTitle || d?.result?.title || d?.data?.title; return u; }
+                return null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/spotify?url=${encodeURIComponent(text.includes('spotify.com') ? text : '')}&q=${encodeURIComponent(songName)}`);
+                const u = d?.data?.url || d?.result?.url;
+                return (u && u.startsWith('http')) ? u : null;
+            }
+        ];
+
+        for (const fn of spApis) {
+            try { songUrl = await fn(); if (songUrl) break; } catch (_) {}
+        }
+
+        if (!songUrl) {
+            await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+            return m.reply("❌ Could not download the Spotify track. Try again or use a different song.");
+        }
+
+        const caption = `🎵 *${songTitle || songName}*\n${songArtist ? `👤 *Artist:* ${songArtist}` : ''}\n\n_Downloaded by KING-M_`;
+        const msgPayload = { audio: { url: songUrl }, mimetype: 'audio/mpeg', fileName: `${songTitle || songName}.mp3` };
+        if (songCover) {
+            msgPayload.contextInfo = { externalAdReply: { title: songTitle || songName, body: songArtist || 'Spotify', thumbnailUrl: songCover, mediaType: 1, renderLargerThumbnail: true } };
+        }
+        await client.sendMessage(m.chat, msgPayload, { quoted: m });
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+    } catch (e) {
+        console.error('[Spotify]', e.message);
+        m.reply("❌ Spotify download failed. Try again.");
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+    }
+}
+break;
+
+//========================================================================================================================//
+case 'truth': {
+    const truths = [
+        "What's the most embarrassing thing you've ever done in public?",
+        "Have you ever lied to get out of trouble? What was the lie?",
+        "What's the biggest secret you've kept from your parents?",
+        "Have you ever had a crush on someone in this group?",
+        "What's something you did that you never told anyone about?",
+        "What's the most childish thing you still do?",
+        "Who is your celebrity crush?",
+        "Have you ever cheated on a test or exam?",
+        "What's the most ridiculous thing you've cried about?",
+        "What's your biggest fear that you never told anyone?",
+        "Have you ever faked being sick to avoid something?",
+        "What's the weirdest dream you've ever had?",
+        "If you could switch lives with someone in this chat, who would it be?",
+        "What's the pettiest reason you've ever blocked someone?",
+        "Have you ever accidentally sent a text to the wrong person?",
+        "What's something you pretend to like but actually hate?",
+        "What's the longest you've gone without showering?",
+        "Have you ever had a huge argument over something silly?",
+        "What's your most used emoji and what does it say about you?",
+        "What's one thing you regret doing in the last year?"
+    ];
+    const chosen = truths[Math.floor(Math.random() * truths.length)];
+    await client.sendMessage(m.chat, {
+        text: `🔮 *TRUTH*\n\n_${chosen}_\n\n_Use ${prefix}dare for a challenge!_`,
+    }, { quoted: m });
+}
+break;
+
+//========================================================================================================================//
+case 'dare': {
+    const dares = [
+        "Send a voice message singing the chorus of your favorite song.",
+        "Change your status to 'I eat boogers' for the next 10 minutes.",
+        "Text someone in your contacts 'I love you' and screenshot the response.",
+        "Send the most unflattering photo of yourself.",
+        "Do 20 pushups right now and send a video proof.",
+        "Call the last person you texted and sing happy birthday to them.",
+        "Send a message to your crush using only emojis.",
+        "Let someone in this group change your WhatsApp status for 1 hour.",
+        "Record a 15-second video of yourself dancing and send it here.",
+        "Tell everyone your honest first impression of them in 1 word each.",
+        "Say the alphabet backwards without making a mistake. Voice note only.",
+        "Send a message to the group with your eyes closed.",
+        "Put an ice cube in your shirt and keep it there for 30 seconds.",
+        "Speak like a robot for the next 5 minutes.",
+        "Send your most recent photo in your camera roll right now.",
+        "Write a 3-line love poem and dedicate it to someone in this group.",
+        "Act like a cat for the next 3 minutes and only respond in 'meow'.",
+        "Do your best impression of someone famous and voice note it.",
+        "Draw a portrait of someone in the group in Paint and send it.",
+        "Share the last YouTube video you watched."
+    ];
+    const chosen = dares[Math.floor(Math.random() * dares.length)];
+    await client.sendMessage(m.chat, {
+        text: `🎭 *DARE*\n\n_${chosen}_\n\n_Use ${prefix}truth for a question!_`,
+    }, { quoted: m });
+}
+break;
+
+//========================================================================================================================//
+case 'wyr': case 'wouldyourather': {
+    const wyrs = [
+        "🔴 Would you rather...\n\n*A)* Never use WhatsApp again\n*B)* Never use any other social media again",
+        "🔴 Would you rather...\n\n*A)* Be famous but poor\n*B)* Be rich but completely unknown",
+        "🔴 Would you rather...\n\n*A)* Know when you're going to die\n*B)* Know how you're going to die",
+        "🔴 Would you rather...\n\n*A)* Live without music\n*B)* Live without TV/movies",
+        "🔴 Would you rather...\n\n*A)* Be able to fly\n*B)* Be invisible whenever you want",
+        "🔴 Would you rather...\n\n*A)* Eat only pizza for a year\n*B)* Eat only rice for a year",
+        "🔴 Would you rather...\n\n*A)* Never feel hot\n*B)* Never feel cold",
+        "🔴 Would you rather...\n\n*A)* Always speak your mind\n*B)* Always know what others are thinking",
+        "🔴 Would you rather...\n\n*A)* Be 10 years older\n*B)* Be 10 years younger",
+        "🔴 Would you rather...\n\n*A)* Have unlimited money but no friends\n*B)* Have unlimited friends but no money",
+        "🔴 Would you rather...\n\n*A)* Fight 100 duck-sized horses\n*B)* Fight 1 horse-sized duck",
+        "🔴 Would you rather...\n\n*A)* Speak every language in the world\n*B)* Play every musical instrument perfectly",
+        "🔴 Would you rather...\n\n*A)* Never have to sleep\n*B)* Never have to eat",
+        "🔴 Would you rather...\n\n*A)* Live in a place that's always hot\n*B)* Live in a place that's always raining",
+        "🔴 Would you rather...\n\n*A)* Be the funniest person in the room\n*B)* Be the smartest person in the room"
+    ];
+    const chosen = wyrs[Math.floor(Math.random() * wyrs.length)];
+    await client.sendMessage(m.chat, {
+        text: `${chosen}\n\n_Reply with A or B!_`,
+    }, { quoted: m });
+}
+break;
+
+//========================================================================================================================//
+case '8ball': case 'eightball': case 'magic8': {
+    if (!text) return m.reply(`🎱 Ask me a yes/no question!\nExample: *${prefix}8ball Will I be rich?*`);
+    const responses = [
+        "✅ It is certain.", "✅ Without a doubt.", "✅ Yes, definitely!",
+        "✅ You may rely on it.", "✅ As I see it, yes.", "✅ Most likely.",
+        "✅ Outlook good.", "✅ Signs point to yes.", "⚖️ Ask again later.",
+        "⚖️ Better not tell you now.", "⚖️ Cannot predict now.",
+        "⚖️ Concentrate and ask again.", "❌ Don't count on it.",
+        "❌ My reply is no.", "❌ My sources say no.",
+        "❌ Outlook not so good.", "❌ Very doubtful.", "❌ Absolutely not!"
+    ];
+    const answer = responses[Math.floor(Math.random() * responses.length)];
+    await client.sendMessage(m.chat, {
+        text: `🎱 *MAGIC 8-BALL*\n\n❓ *Question:* ${text}\n\n💬 *Answer:* ${answer}`,
+    }, { quoted: m });
+}
+break;
+
+//========================================================================================================================//
+case 'apk': case 'apkdl': {
+    if (!text) return m.reply(`📱 Provide an app name!\nExample: *${prefix}apk WhatsApp*`);
+    try {
+        await client.sendMessage(m.chat, { react: { text: '🔍', key: m.key } });
+        let result = null;
+        const apkApis = [
+            async () => {
+                const d = await fetchJson(`https://api.siputzx.my.id/api/d/apkpure?q=${encodeURIComponent(text)}`);
+                if (d?.data) return d.data;
+                return null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.agatz.xyz/api/apk?q=${encodeURIComponent(text)}`);
+                if (d?.data) return d.data;
+                return null;
+            },
+            async () => {
+                const d = await fetchJson(`https://api.dreaded.site/api/apk?q=${encodeURIComponent(text)}`);
+                if (d?.result) return d.result;
+                return null;
+            }
+        ];
+
+        for (const fn of apkApis) {
+            try { result = await fn(); if (result) break; } catch (_) {}
+        }
+
+        if (!result) {
+            await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+            return m.reply("❌ APK not found. Try a different app name.");
+        }
+
+        const name = result.name || result.title || text;
+        const version = result.version || 'Unknown';
+        const size = result.size || 'Unknown';
+        const developer = result.developer || result.dev || 'Unknown';
+        const downloadLink = result.url || result.download || result.link;
+        const icon = result.icon || result.image || result.cover;
+
+        const caption = `📱 *${name}*\n\n*Version:* ${version}\n*Size:* ${size}\n*Developer:* ${developer}\n*Download:* ${downloadLink || 'See below'}`;
+
+        if (icon) {
+            await client.sendMessage(m.chat, { image: { url: icon }, caption }, { quoted: m });
+        } else {
+            await m.reply(caption);
+        }
+
+        if (downloadLink) {
+            await client.sendMessage(m.chat, {
+                document: { url: downloadLink },
+                mimetype: 'application/vnd.android.package-archive',
+                fileName: `${name}_${version}.apk`
+            }, { quoted: m });
+        }
+
+        await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
+    } catch (e) {
+        console.error('[APK]', e.message);
+        m.reply("❌ Failed to fetch APK. Try again later.");
+        await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } });
+    }
+}
+break;
+
+//========================================================================================================================//
+case 'country': case 'countryinfo': {
+    if (!text) return m.reply(`🌍 Provide a country name!\nExample: *${prefix}country Kenya*`);
+    try {
+        const d = await fetchJson(`https://restcountries.com/v3.1/name/${encodeURIComponent(text)}`);
+        if (!d || d.status === 404) return m.reply("❌ Country not found.");
+        const c = Array.isArray(d) ? d[0] : d;
+        const info = `🌍 *${c.name.common}* (${c.name.official})\n\n` +
+            `🏙️ *Capital:* ${c.capital?.[0] || 'N/A'}\n` +
+            `🌐 *Region:* ${c.region} › ${c.subregion || ''}\n` +
+            `👥 *Population:* ${c.population?.toLocaleString() || 'N/A'}\n` +
+            `💰 *Currency:* ${Object.values(c.currencies || {})?.[0]?.name || 'N/A'} (${Object.values(c.currencies || {})?.[0]?.symbol || ''})\n` +
+            `🗣️ *Languages:* ${Object.values(c.languages || {}).join(', ') || 'N/A'}\n` +
+            `📞 *Calling Code:* +${c.idd?.root?.replace('+', '') || ''}${c.idd?.suffixes?.[0] || ''}\n` +
+            `🕐 *Timezone:* ${c.timezones?.[0] || 'N/A'}\n` +
+            `🚗 *Driving Side:* ${c.car?.side || 'N/A'}\n` +
+            `🌐 *TLD:* ${c.tld?.[0] || 'N/A'}`;
+        await client.sendMessage(m.chat, {
+            image: { url: c.flags?.png || c.flags?.svg || '' },
+            caption: info
+        }, { quoted: m });
+    } catch (e) {
+        m.reply("❌ Failed to fetch country info. Try again.");
+    }
+}
+break;
+
+//========================================================================================================================//
+case 'currency': case 'convert': {
+    if (!text) return m.reply(`💱 Convert currencies!\nExample: *${prefix}currency 100 USD KES*`);
+    try {
+        const parts = text.split(' ');
+        if (parts.length < 3) return m.reply(`Format: *${prefix}currency <amount> <FROM> <TO>*\nExample: *${prefix}currency 100 USD KES*`);
+        const amount = parseFloat(parts[0]);
+        const from = parts[1].toUpperCase();
+        const to = parts[2].toUpperCase();
+        if (isNaN(amount)) return m.reply("❌ Invalid amount.");
+        const d = await fetchJson(`https://api.frankfurter.app/latest?amount=${amount}&from=${from}&to=${to}`);
+        if (!d?.rates?.[to]) return m.reply(`❌ Could not convert ${from} to ${to}. Check the currency codes.`);
+        const result = d.rates[to];
+        m.reply(`💱 *Currency Converter*\n\n*${amount} ${from}* = *${result.toFixed(4)} ${to}*\n\n_Rate: 1 ${from} = ${(result/amount).toFixed(6)} ${to}_`);
+    } catch (e) {
+        m.reply("❌ Currency conversion failed. Check your input and try again.");
+    }
+}
+break;
+
 //========================================================================================================================//        
  default: {
             // FIX: Use safe navigation to check budy and command
