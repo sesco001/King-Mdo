@@ -20,6 +20,11 @@
     /indexInfo/i, /baseKey/i, /baseKeyType/i, /remoteIdentityKey/i,
     /pendingPreKey/i, /signedKeyId/i, /preKeyId/i,
     /pubKey/i, /privKey/i, /<Buffer /i, /Buffer \d+/i,
+    /MessageCounterError/i, /Key used already/i, /never filled/i,
+    /Session error/i, /session_cipher/i, /queue_job/i,
+    /MaxListenersExceeded/i, /memory leak detected/i,
+    /Decrypted message with closed/i, /closed session/i,
+    /Possible EventEmitter/i, /setMaxListeners/i,
   ];
   const isNoisy = (...args) => {
     const msg = args.map(a => (typeof a === 'object' ? (a?.message || '') : String(a))).join(' ');

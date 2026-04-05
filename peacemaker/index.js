@@ -33,6 +33,9 @@ const processedEdits = new Map();
 authenticationn();
 
 async function startPeace() { 
+  // Prevent MaxListeners warning from hot-reload accumulation
+  process.setMaxListeners(0);
+
   const { state, saveCreds } = await useMultiFileAuthState("session");
   const { version } = await fetchLatestBaileysVersion();
 
