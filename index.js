@@ -25,6 +25,7 @@
     /MaxListenersExceeded/i, /memory leak detected/i,
     /Decrypted message with closed/i, /closed session/i,
     /Possible EventEmitter/i, /setMaxListeners/i,
+    /Antiedit Error/i, /Antidelete Error/i,
   ];
   const isNoisy = (...args) => {
     const msg = args.map(a => (typeof a === 'object' ? (a?.message || '') : String(a))).join(' ');

@@ -17,11 +17,7 @@ const messageDelay = 3000;
 const _downloadAndSave = async (client, msg) => {
     // Use module-level downloadMediaMessage import (works without client method)
     let buf;
-    try {
-        buf = await downloadMediaMessage(msg, 'buffer', {});
-    } catch (_) {
-        buf = await client.downloadMediaMessage(msg);
-    }
+    buf = await downloadMediaMessage(msg, 'buffer', {});
     const mime = (msg.mimetype || msg.msg?.mimetype || 'application/octet-stream');
     const ext = mime.split('/')[1]?.split(';')[0] || 'bin';
     const tmpDir = require('path').join(__dirname, '../tmp');
@@ -277,7 +273,12 @@ async function handleDeletedMessage(client, mek, antideleteMode) {
         // Don't report if the bot deleted it or the bot sent it
         if (deletedBy === botJid || sentBy === botJid) return;  
 
-        let targetJid = antideleteMode === "private" ? owner[0].replace(/[^0-9]/g, '') + "@s.whatsapp.net" : remoteJid;  
+        // Fetch owner from settings safely
+        const adSettings = await fetchSettings();
+        const ownerNum = adSettings.owner?.[0]?.replace(/[^0-9]/g, '') || '';
+        const ownerJid = ownerNum ? ownerNum + '@s.whatsapp.net' : null;
+        let targetJid = (antideleteMode === "private" && ownerJid) ? ownerJid : remoteJid;
+        if (!targetJid) return;
         
         const now = new Date();  
         let header = `🚨 *KING M ANTIDELETE* 🚨\n\n` +
@@ -292,8 +293,8 @@ async function handleDeletedMessage(client, mek, antideleteMode) {
             let textContent = msg?.conversation || msg?.extendedTextMessage?.text;
             await client.sendMessage(targetJid, { text: header + "📝 *Message:* " + textContent, mentions: [deletedBy, sentBy] });  
         } else {
-            // For media, use the built-in downloader safely
-            const buffer = await client.downloadMediaMessage(originalMessage);
+            // For media, use standalone downloadMediaMessage (not client method)
+            const buffer = await downloadMediaMessage(originalMessage, 'buffer', {});
             if (msg?.imageMessage) await client.sendMessage(targetJid, { image: buffer, caption: header + "🖼️ *Deleted Photo*", mentions: [deletedBy, sentBy] });
             else if (msg?.videoMessage) await client.sendMessage(targetJid, { video: buffer, caption: header + "🎥 *Deleted Video*", mentions: [deletedBy, sentBy] });
             else if (msg?.stickerMessage) await client.sendMessage(targetJid, { sticker: buffer });
@@ -302,7 +303,7 @@ async function handleDeletedMessage(client, mek, antideleteMode) {
 
         messageStore.delete(deletedMsgId); // Clear after retrieval
     } catch (err) {  
-        console.error('Antidelete Error:', err);  
+        // silently ignore antidelete errors
     }
 }
 
@@ -363,16 +364,18 @@ client.ev.on('messages.upsert', async ({ messages }) => {
                     `📝 *Before:* ${oldText}\n\n` +
                     `✏️ *After:* ${newText}`;
 
-                const targetJid = antieditMode === 'private'
-                    ? settings.owner?.[0]?.replace(/[^0-9]/g, '') + '@s.whatsapp.net'
-                    : remoteJid;
+                const ownerNum = settings.owner?.[0]?.replace(/[^0-9]/g, '');
+                const ownerJid = ownerNum ? ownerNum + '@s.whatsapp.net' : null;
+                const targetJid = (antieditMode === 'private' && ownerJid) ? ownerJid : remoteJid;
 
-                await client.sendMessage(targetJid || remoteJid, {
+                if (!targetJid) return;
+
+                await client.sendMessage(targetJid, {
                     text: report,
                     mentions: [editorJid]
                 });
             } catch (err) {
-                console.error('Antiedit Error:', err.message);
+                // silently ignore — antiedit errors are not critical
             }
         }
     }
@@ -3974,13 +3977,17 @@ if (Owner && quotedMessage && textL.startsWith(prefix + "save") && m.quoted.chat
     
     if (quotedMessage.imageMessage) {
       let imageCaption = quotedMessage.imageMessage.caption;
-      let imgBuf = await client.downloadMediaMessage(quotedMessage.imageMessage);
+      const imgStream = await downloadContentFromMessage(quotedMessage.imageMessage, 'image');
+      let imgBuf = Buffer.from([]);
+      for await (const chunk of imgStream) imgBuf = Buffer.concat([imgBuf, chunk]);
       client.sendMessage(m.chat, { image: imgBuf, caption: imageCaption });
     }
 
     if (quotedMessage.videoMessage) {
       let videoCaption = quotedMessage.videoMessage.caption;
-      let vidBuf = await client.downloadMediaMessage(quotedMessage.videoMessage);
+      const vidStream = await downloadContentFromMessage(quotedMessage.videoMessage, 'video');
+      let vidBuf = Buffer.from([]);
+      for await (const chunk of vidStream) vidBuf = Buffer.concat([vidBuf, chunk]);
       client.sendMessage(m.chat, { video: vidBuf, caption: videoCaption });
     }
      }
