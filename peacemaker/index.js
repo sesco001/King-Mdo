@@ -150,7 +150,6 @@ async function startPeace() {
         } catch (e) {}
       }, 5000);
 
-      client.sendMessage(client.user.id, { text: `🟢 *KING-M ONLINE*\n📱 +${num}\n🎯 Mode: ${mode}\n⚡ Prefix: ${prefix}` });
     }
   });
 
