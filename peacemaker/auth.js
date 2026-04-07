@@ -21,10 +21,13 @@ async function authenticationn() {
       return;
     }
 
-    // Always write the session from env var so updates to the secret take effect
-    fs.mkdirSync('./session', { recursive: true });
-    fs.writeFileSync(credPath, decoded, 'utf8');
-    console.log('Session loaded from SECRET.');
+    if (!fs.existsSync(credPath)) {
+      fs.mkdirSync('./session', { recursive: true });
+      fs.writeFileSync(credPath, decoded, 'utf8');
+      console.log('Session loaded from SECRET.');
+    } else {
+      console.log('Using existing session credentials.');
+    }
   } catch (err) {
     console.log('Session error: ' + err.message);
   }
