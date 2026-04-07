@@ -21,14 +21,10 @@ async function authenticationn() {
       return;
     }
 
-    if (!fs.existsSync(credPath)) {
-      // First-time setup — write the session from env var
-      console.log('Connecting...');
-      fs.writeFileSync(credPath, decoded, 'utf8');
-    } else {
-      // Session file already exists — preserve it (Baileys keeps it fresh)
-      console.log('Using existing session credentials.');
-    }
+    // Always write the session from env var so updates to the secret take effect
+    fs.mkdirSync('./session', { recursive: true });
+    fs.writeFileSync(credPath, decoded, 'utf8');
+    console.log('Session loaded from SECRET.');
   } catch (err) {
     console.log('Session error: ' + err.message);
   }
