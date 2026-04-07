@@ -22,10 +22,12 @@ async function authenticationn() {
     }
 
     if (!fs.existsSync(credPath)) {
+      // First-time setup — write the session from env var
       console.log('Connecting...');
       fs.writeFileSync(credPath, decoded, 'utf8');
     } else {
-      fs.writeFileSync(credPath, decoded, 'utf8');
+      // Session file already exists — preserve it (Baileys keeps it fresh)
+      console.log('Using existing session credentials.');
     }
   } catch (err) {
     console.log('Session error: ' + err.message);
