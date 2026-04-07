@@ -84,7 +84,8 @@ const { exec, spawn, execSync } = require("child_process");
 const _msgStore = new Map();
 const _delProcessed = new Set();
 const _editProcessed = new Set();
-setInterval(() => { _delProcessed.clear(); _editProcessed.clear(); }, 60000);
+const _stickerProcessed = new Set();
+setInterval(() => { _delProcessed.clear(); _editProcessed.clear(); _stickerProcessed.clear(); }, 60000);
 let _attachedClient = null;
 
 async function _handleDeleted(client, mek, mode) {
@@ -124,45 +125,50 @@ async function _handleDeleted(client, mek, mode) {
 function attachAntiListeners(client) {
     if (_attachedClient === client) return; // already registered for this client session
     _attachedClient = client;
+
+    // ── Store messages + ANTIDELETE ──
     client.ev.on('messages.upsert', async ({ messages }) => {
         const mek = messages[0];
         if (!mek?.message) return;
-        // Store all non-protocol messages for later antidelete lookup
+        // Store all non-protocol messages for antidelete/antiedit lookup
         if (mek.key?.id && !mek.message.protocolMessage) {
             _msgStore.set(mek.key.id, mek);
             if (_msgStore.size > 2000) _msgStore.delete(_msgStore.keys().next().value);
         }
         const s = await fetchSettings();
         const adMode = s.antidelete || 'off';
-        const aeMode = s.antiedit   || 'off';
-        // ── ANTIDELETE ──
         if (adMode !== 'off' && mek.message?.protocolMessage?.type === 0) {
             await _handleDeleted(client, mek, adMode);
         }
-        // ── ANTIEDIT ──
-        if (aeMode !== 'off') {
-            const isEdit = mek.message?.protocolMessage?.type === 14;
-            const editId = isEdit ? mek.message.protocolMessage.key.id : null;
-            const editedProto = isEdit ? mek.message.protocolMessage.editedMessage : null;
-            if (isEdit && editedProto && editId) {
-                if (_editProcessed.has(editId)) return;
-                _editProcessed.add(editId);
-                if (mek.key.fromMe) return;
-                const botJid = client.user.id.split(':')[0] + '@s.whatsapp.net';
-                const editorJid = mek.participant || mek.key.remoteJid;
-                if (editorJid === botJid) return;
-                try {
-                    const original = _msgStore.get(editId);
-                    const remoteJid = mek.key.remoteJid;
-                    const ownerJid = (s.owner?.[0]?.replace(/[^0-9]/g, '') || '') + '@s.whatsapp.net';
-                    const target = (aeMode === 'private' && ownerJid) ? ownerJid : remoteJid;
-                    if (!target) return;
-                    const newText = editedProto?.conversation || editedProto?.extendedTextMessage?.text || editedProto?.imageMessage?.caption || editedProto?.videoMessage?.caption || '*(media)*';
-                    const oldText = original?.message?.conversation || original?.message?.extendedTextMessage?.text || original?.message?.imageMessage?.caption || original?.message?.videoMessage?.caption || '*(unknown)*';
-                    const report = `✏️ *KING M ANTIEDIT* ✏️\n\n👤 *Edited By:* @${editorJid.split('@')[0]}\n⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n📝 *Before:* ${oldText}\n\n✏️ *After:* ${newText}`;
-                    await client.sendMessage(target, { text: report, mentions: [editorJid] });
-                } catch (_) {}
-            }
+    });
+
+    // ── ANTIEDIT — Baileys emits messages.update (not upsert) for edits ──
+    client.ev.on('messages.update', async (updates) => {
+        for (const { key, update } of updates) {
+            if (!update?.message?.editedMessage) continue;
+            const s = await fetchSettings();
+            const aeMode = s.antiedit || 'off';
+            if (aeMode === 'off') continue;
+            const editId = key.id; // ID of the original message
+            if (_editProcessed.has(editId)) continue;
+            _editProcessed.add(editId);
+            if (key.fromMe) continue;
+            const botJid = client.user.id.split(':')[0] + '@s.whatsapp.net';
+            const editorJid = key.participant || key.remoteJid;
+            if (editorJid === botJid) continue;
+            try {
+                const original = _msgStore.get(editId);
+                const remoteJid = key.remoteJid;
+                const ownerJid = (s.owner?.[0]?.replace(/[^0-9]/g, '') || '') + '@s.whatsapp.net';
+                const target = (aeMode === 'private' && ownerJid) ? ownerJid : remoteJid;
+                if (!target) continue;
+                const editedMsg = update.message.editedMessage?.message || {};
+                const newText = editedMsg?.conversation || editedMsg?.extendedTextMessage?.text || editedMsg?.imageMessage?.caption || editedMsg?.videoMessage?.caption || '*(media)*';
+                const oldMsg = original?.message || {};
+                const oldText = oldMsg?.conversation || oldMsg?.extendedTextMessage?.text || oldMsg?.imageMessage?.caption || oldMsg?.videoMessage?.caption || '*(not cached)*';
+                const report = `✏️ *KING M ANTIEDIT* ✏️\n\n👤 *Edited By:* @${editorJid.split('@')[0]}\n⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n📝 *Before:* ${oldText}\n\n✏️ *After:* ${newText}`;
+                await client.sendMessage(target, { text: report, mentions: [editorJid] });
+            } catch (_) {}
         }
     });
 }
@@ -399,7 +405,8 @@ if (antisticker && antisticker !== 'off' && isSticker) {
     
     // 3. Permissions: Only act if Bot is Admin & User is NOT Admin/Owner
     if (!Owner && isBotAdmin && !isAdmin && m.isGroup) {
-        
+        if (_stickerProcessed.has(m.key.id)) return;
+        _stickerProcessed.add(m.key.id);
         const kid = m.sender;
         const userTag = `@${kid.split("@")[0]}`;
 
