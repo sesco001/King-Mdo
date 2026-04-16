@@ -1532,37 +1532,37 @@ case 'antidelete': {
         const validModes = ['off', 'private', 'chat'];
         const newMode = args[0]?.toLowerCase().trim();
 
-        if (!client.settings) client.settings = {};  
+        // Show current status if no valid arg given
+        if (!newMode || !validModes.includes(newMode)) {
+            const s = await fetchSettings();
+            const currentMode = s.antidelete || 'off';
+            return m.reply(
+                `🛡️ *KING M ANTIDELETE*\n\n` +
+                `Current Mode: *${currentMode}*\n\n` +
+                `Usage:\n` +
+                `• ${prefix}antidelete off\n` +
+                `• ${prefix}antidelete private\n` +
+                `• ${prefix}antidelete chat`
+            );
+        }
 
-        if (!newMode || !validModes.includes(newMode)) {  
-            const currentMode = client.settings.antidelete || 'off';  
+        // Save to database
+        await updateSetting('antidelete', newMode);
+        // Flush cache so the listener picks up the new value immediately
+        fetchSettings.invalidate();
 
-            // FIXED: Wrapped the text below in backticks
-            return m.reply(  
-                `🛡️ *KING M ANTIDELETE*\n\n` +  
-                `Current Mode: *${currentMode}*\n\n` +  
-                `Usage:\n` +  
-                `• ${prefix}antidelete off\n` +  
-                `• ${prefix}antidelete private\n` +  
-                `• ${prefix}antidelete chat`  
-            );  
-        }  
+        const response =
+            newMode === 'off'
+                ? '❌ AntiDelete *Disabled*'
+                : newMode === 'private'
+                ? '🔒 AntiDelete set to *PRIVATE* — deleted msgs sent to owner DM'
+                : '💬 AntiDelete set to *CHAT* — deleted msgs revealed in same chat';
 
-        client.settings.antidelete = newMode;  
-
-        let response =  
-            newMode === 'off'  
-                ? '❌ AntiDelete Disabled'  
-                : newMode === 'private'  
-                ? '🔒 AntiDelete set to PRIVATE (Owner only)'  
-                : '💬 AntiDelete set to CHAT (Same chat)';  
-
-        // FIXED: Added backticks around the success message
         return m.reply(`✅ ${response}`);
 
     } catch (err) {
-        logError('Antidelete Command ', err);
-        return m.reply("❌ Failed to update AntiDelete setting.");
+        logError('Antidelete Command', err);
+        return m.reply('❌ Failed to update AntiDelete setting.');
     }
 }
 break;
@@ -1584,8 +1584,7 @@ break;
     const success = await db.updateSetting('antiedit', newMode);
 
     if (success) {
-      // Refresh settings in memory
-      client.settings = await db.getSettings();
+      fetchSettings.invalidate();
       m.reply(`✅ Antiedit mode set to *${newMode}*`);
       console.log(`[SETTINGS] Antiedit updated to ${newMode} by ${m.sender.split('@')[0]}`);
     } else {
