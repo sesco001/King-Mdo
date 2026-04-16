@@ -63,7 +63,7 @@ const acrcloud = require("acrcloud");
 const ytdl = require("ytdl-core");
 const Client = new Genius.Client("TUoAEhL79JJyU-MpOsBDkFhJFWFH28nv6dgVgPA-9R1YRwLNP_zicdX2omG2qKE8gYLJat5F5VSBNLfdnlpfJg"); // Scrapes if no key is provided
 const { downloadYouTube, downloadSoundCloud, downloadSpotify, searchYouTube, searchSoundCloud, searchSpotify } = require('../peacemaker/wee');
-const { getSettings, updateSetting } = require('../Database/config');
+const { getSettings, updateSetting, getSudoOwners } = require('../Database/config');
 
 // Persistent in-memory warn store: key = `groupJid_userJid` → count
 const warnStore = new Map();
@@ -102,8 +102,11 @@ async function _handleDeleted(client, mek, mode) {
         const sentBy = original.key.participant || original.key.remoteJid;
         if (deletedBy === botJid || sentBy === botJid) return;
         const s = await fetchSettings();
-        const ownerJid = (s.owner?.[0]?.replace(/[^0-9]/g, '') || '') + '@s.whatsapp.net';
-        const target = (mode === 'private' && ownerJid) ? ownerJid : remoteJid;
+        // owner lives in sudo_owners table, not bot_settings — fetch it correctly
+        const owners = await getSudoOwners();
+        const ownerNum = owners?.[0]?.replace(/[^0-9]/g, '') || client.user.id.split(':')[0];
+        const ownerJid = ownerNum + '@s.whatsapp.net';
+        const target = (mode === 'private') ? ownerJid : remoteJid;
         if (!target) return;
         const now = new Date();
         const header = `🚨 *KING M ANTIDELETE* 🚨\n\n👤 *Deleted By:* @${deletedBy.split('@')[0]}\n✉️ *Sent By:* @${sentBy.split('@')[0]}\n⏰ *Time:* ${now.toLocaleTimeString()}\n\n`;
@@ -159,8 +162,10 @@ function attachAntiListeners(client) {
             try {
                 const original = _msgStore.get(editId);
                 const remoteJid = key.remoteJid;
-                const ownerJid = (s.owner?.[0]?.replace(/[^0-9]/g, '') || '') + '@s.whatsapp.net';
-                const target = (aeMode === 'private' && ownerJid) ? ownerJid : remoteJid;
+                const owners = await getSudoOwners();
+                const ownerNum = owners?.[0]?.replace(/[^0-9]/g, '') || client.user.id.split(':')[0];
+                const ownerJid = ownerNum + '@s.whatsapp.net';
+                const target = (aeMode === 'private') ? ownerJid : remoteJid;
                 if (!target) continue;
                 const editedMsg = update.message.editedMessage?.message || {};
                 const newText = editedMsg?.conversation || editedMsg?.extendedTextMessage?.text || editedMsg?.imageMessage?.caption || editedMsg?.videoMessage?.caption || '*(media)*';
