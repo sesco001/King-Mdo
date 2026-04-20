@@ -1636,53 +1636,50 @@ case 'gcstatus2': {
     await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
     try {
-        const successMessage = `✅ *Status Posted to Group!*`;
+        // ── Exact .gs logic — only m.chat replaced with gcJid ──
+        let payload = { groupStatusMessage: {} };
+        const successMessage = `✅ *Status Posted Successfully!*`;
 
         if (m.quoted) {
-            const mime = (m.quoted.msg || m.quoted).mimetype || '';
-            const q = gcText || '';
+            const mime = (m.quoted.msg || m.quoted).mimetype || "";
+            const q = gcText || "";
 
             if (/image/.test(mime)) {
                 const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.jpg`);
                 fs.writeFileSync(tempFilePath2, buffer);
-                await client.sendMessage(gcJid, {
-                    image: { url: tempFilePath2 },
-                    caption: q || m.quoted.caption || ''
-                });
+                payload.groupStatusMessage.image = { url: tempFilePath2 };
+                payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/video/.test(mime)) {
                 const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.mp4`);
                 fs.writeFileSync(tempFilePath2, buffer);
-                await client.sendMessage(gcJid, {
-                    video: { url: tempFilePath2 },
-                    caption: q || m.quoted.caption || ''
-                });
+                payload.groupStatusMessage.video = { url: tempFilePath2 };
+                payload.groupStatusMessage.caption = q || m.quoted.caption || "";
 
             } else if (/audio/.test(mime)) {
                 const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.mp3`);
                 fs.writeFileSync(tempFilePath2, buffer);
-                await client.sendMessage(gcJid, {
-                    audio: { url: tempFilePath2 },
-                    mimetype: 'audio/mpeg',
-                    ptt: false
-                });
+                payload.groupStatusMessage.audio = { url: tempFilePath2 };
 
             } else if (/webp/.test(mime)) {
                 const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
-                await client.sendMessage(gcJid, { sticker: buffer });
+                tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.webp`);
+                fs.writeFileSync(tempFilePath2, buffer);
+                payload.groupStatusMessage.sticker = { url: tempFilePath2 };
 
-            } else {
-                const txt = q || m.quoted.text || m.quoted.conversation || '';
-                if (!txt) return reply('❌ Could not extract text from quoted message.');
-                await client.sendMessage(gcJid, { text: txt });
+            } else if (m.quoted.text || m.quoted.conversation) {
+                payload.groupStatusMessage.text = m.quoted.text || m.quoted.conversation;
             }
         } else {
             if (!gcText) return reply(`❌ Provide a message or reply to media.\nUsage: ${prefix}gstatus2 ${targetJid} Hello group!`);
-            await client.sendMessage(gcJid, { text: gcText });
+            payload.groupStatusMessage.text = gcText;
         }
+
+        // Send to target group JID (same as .gs sends to m.chat)
+        await client.sendMessage(gcJid, payload, { quoted: m });
 
         await client.sendMessage(m.chat, { text: successMessage }, { quoted: m });
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
