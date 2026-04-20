@@ -1678,8 +1678,8 @@ case 'gcstatus2': {
             payload.groupStatusMessage.text = gcText;
         }
 
-        // Send to target group JID (same as .gs sends to m.chat)
-        await client.sendMessage(gcJid, payload, { quoted: m });
+        // Send to target group JID — no quoted: m (DM key can't be resolved in group context)
+        await client.sendMessage(gcJid, payload);
 
         await client.sendMessage(m.chat, { text: successMessage }, { quoted: m });
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
