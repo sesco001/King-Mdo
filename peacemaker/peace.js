@@ -263,7 +263,9 @@ const {
     // Allow fromMe COMMANDS (starts with prefix) — owner uses the bot's own phone.
     // Block fromMe NON-commands in public mode (prevents chatbot reply loops).
     if (m.isBaileys) return;
-    if (m.fromMe && mode !== 'self' && !messageBody.startsWith(prefix)) return;
+    // Allow through if owner has an active .mygroups session (number reply has no prefix)
+    const _hasActiveSession = _mygroupsSessions.has(m.sender);
+    if (m.fromMe && mode !== 'self' && !messageBody.startsWith(prefix) && !_hasActiveSession) return;
     // ─────────────────────────────────────────────────────────────────────────
     const mek = chatUpdate.messages[0];
           // ==================================
