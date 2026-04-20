@@ -972,7 +972,9 @@ let cap = `
 
 ┏▣ 👥 *GROUP MANAGER* 👥
 │ ⬡ approve
-│ ⬡ gstatus
+│ ⬡ gstatus  ← post status in group
+│ ⬡ mygroups  ← list all groups (reply number to get ID)
+│ ⬡ gstatus2 <groupId> <msg>  ← post to group from DM
 │ ⬡ reject
 │ ⬡ promote
 │ ⬡ demote
@@ -1634,45 +1636,55 @@ case 'gcstatus2': {
     await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
     try {
-        let payload = { groupStatusMessage: {} };
+        const successMessage = `✅ *Status Posted to Group!*`;
 
         if (m.quoted) {
             const mime = (m.quoted.msg || m.quoted).mimetype || '';
-            const caption = gcText || m.quoted.caption || '';
+            const q = gcText || '';
 
             if (/image/.test(mime)) {
-                const buf = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.jpg`);
-                fs.writeFileSync(tempFilePath2, buf);
-                payload.groupStatusMessage.image = { url: tempFilePath2 };
-                payload.groupStatusMessage.caption = caption;
+                fs.writeFileSync(tempFilePath2, buffer);
+                await client.sendMessage(gcJid, {
+                    image: { url: tempFilePath2 },
+                    caption: q || m.quoted.caption || ''
+                });
 
             } else if (/video/.test(mime)) {
-                const buf = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.mp4`);
-                fs.writeFileSync(tempFilePath2, buf);
-                payload.groupStatusMessage.video = { url: tempFilePath2 };
-                payload.groupStatusMessage.caption = caption;
+                fs.writeFileSync(tempFilePath2, buffer);
+                await client.sendMessage(gcJid, {
+                    video: { url: tempFilePath2 },
+                    caption: q || m.quoted.caption || ''
+                });
 
             } else if (/audio/.test(mime)) {
-                const buf = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
                 tempFilePath2 = path.join(tempDir2, `gs2_${Date.now()}.mp3`);
-                fs.writeFileSync(tempFilePath2, buf);
-                payload.groupStatusMessage.audio = { url: tempFilePath2 };
+                fs.writeFileSync(tempFilePath2, buffer);
+                await client.sendMessage(gcJid, {
+                    audio: { url: tempFilePath2 },
+                    mimetype: 'audio/mpeg',
+                    ptt: false
+                });
+
+            } else if (/webp/.test(mime)) {
+                const buffer = await downloadMediaMessage(m.quoted.fakeObj || m.quoted, 'buffer', {});
+                await client.sendMessage(gcJid, { sticker: buffer });
 
             } else {
-                payload.groupStatusMessage.text = caption || gcText;
+                const txt = q || m.quoted.text || m.quoted.conversation || '';
+                if (!txt) return reply('❌ Could not extract text from quoted message.');
+                await client.sendMessage(gcJid, { text: txt });
             }
         } else {
             if (!gcText) return reply(`❌ Provide a message or reply to media.\nUsage: ${prefix}gstatus2 ${targetJid} Hello group!`);
-            payload.groupStatusMessage.text = gcText;
+            await client.sendMessage(gcJid, { text: gcText });
         }
 
-        await client.sendMessage(gcJid, payload);
-
-        await client.sendMessage(m.chat, {
-            text: `✅ *Group Status Sent!*\n🆔 *To:* ${gcJid}`
-        }, { quoted: m });
+        await client.sendMessage(m.chat, { text: successMessage }, { quoted: m });
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (err) {
