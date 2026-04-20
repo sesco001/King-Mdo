@@ -820,9 +820,16 @@ if (antilinkall === 'on' && body.includes('https://') && !Owner && isBotAdmin &&
       if (entry) {
         clearTimeout(session.timer);
         _mygroupsSessions.delete(m.sender);
+        // Message 1: summary with name
         await client.sendMessage(m.chat, {
-          text: `✅ *Group Selected!*\n\n📛 *Name:* ${entry.name}\n🆔 *Group ID:*\n\`${entry.jid}\`\n\n_Use this ID with_ \`${prefix}gstatus2 ${entry.jid} <your message>\``,
+          text: `✅ *Group Selected!*\n\n📛 *Name:* ${entry.name}\n\n👇 *Group ID below — long press to copy:*`,
         }, { quoted: m });
+        // Message 2: bare JID only — easiest to long-press & copy
+        await client.sendMessage(m.chat, { text: entry.jid });
+        // Message 3: ready-to-use command template
+        await client.sendMessage(m.chat, {
+          text: `📋 *Ready-to-use command:*\n${prefix}gstatus2 ${entry.jid} your message here`,
+        });
         return;
       }
     }
@@ -1627,10 +1634,6 @@ case 'gcstatus2': {
     await client.sendMessage(m.chat, { react: { text: '⏳', key: m.key } });
 
     try {
-        // Verify bot is in that group
-        const meta = await client.groupMetadata(gcJid).catch(() => null);
-        if (!meta) return reply(`❌ I am not in that group or the ID is wrong.\n_ID used:_ \`${gcJid}\``);
-
         let payload = { groupStatusMessage: {} };
 
         if (m.quoted) {
@@ -1661,20 +1664,20 @@ case 'gcstatus2': {
                 payload.groupStatusMessage.text = caption || gcText;
             }
         } else {
-            if (!gcText) return reply(`❌ Provide a message or reply to media.\nUsage: \`${prefix}gstatus2 ${targetJid} Hello group!\``);
+            if (!gcText) return reply(`❌ Provide a message or reply to media.\nUsage: ${prefix}gstatus2 ${targetJid} Hello group!`);
             payload.groupStatusMessage.text = gcText;
         }
 
         await client.sendMessage(gcJid, payload);
 
         await client.sendMessage(m.chat, {
-            text: `✅ *Status sent to:* ${meta.subject}\n🆔 \`${gcJid}\``
+            text: `✅ *Group Status Sent!*\n🆔 *To:* ${gcJid}`
         }, { quoted: m });
         await client.sendMessage(m.chat, { react: { text: '✅', key: m.key } });
 
     } catch (err) {
         logError('gstatus2', err);
-        reply(`❌ Failed to send status: ${err.message}`);
+        reply(`❌ Failed: ${err.message}\n\n_Make sure the bot is in that group and the ID is correct._`);
     } finally {
         if (tempFilePath2 && fs.existsSync(tempFilePath2)) {
             try { fs.unlinkSync(tempFilePath2); } catch (_) {}
