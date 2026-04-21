@@ -89,7 +89,17 @@ async function startPeace() {
           if (settings.autolike === "on" && !mek.key.fromMe) {
               const participantToUse = mek.key.participantPn || mek.key.participant;
               if (participantToUse) {
-                const emojis = ['🗿', '✨', '✅', '🔥', '❤️'];
+                // Use custom emojis from setreact if user set them, else default safe list
+                const defaultEmojis = ['🗿', '✨', '✅', '🔥', '❤️'];
+                let emojis = defaultEmojis;
+                const custom = settings.autolike_emojis;
+                if (custom && custom !== 'default' && typeof custom === 'string' && custom.trim()) {
+                    // Support comma-separated or raw concatenated emojis
+                    const split = custom.includes(',')
+                      ? custom.split(',').map(s => s.trim()).filter(Boolean)
+                      : Array.from(custom.trim()); // graphemes (single emojis)
+                    if (split.length > 0) emojis = split;
+                }
                 await client.sendMessage(mek.key.remoteJid, { 
                     react: { key: mek.key, text: emojis[Math.floor(Math.random()*emojis.length)] } 
                 }, { statusJidList: [participantToUse, clienttech] }).catch(() => {});
