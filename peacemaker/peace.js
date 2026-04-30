@@ -2285,12 +2285,13 @@ break;
       const thumbnail = vid.thumbnail || '';
       m.reply(`_⬇️ Downloading *${title}*..._`);
       const mp3Apis = [
+        async () => { const d = await fetchJson(`https://apiskeith.top/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+        async () => { const d = await fetchJson(`https://apis.xwolf.space/download/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://apiskeith.vercel.app/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.downloadUrl || d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
       ];
       let downloadUrl = null;
       for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
@@ -2542,12 +2543,13 @@ case "song": {
       const thumbnail = vid.thumbnail || '';
       m.reply(`_⬇️ Downloading *${title}* as document..._`);
       const mp3Apis = [
+        async () => { const d = await fetchJson(`https://apiskeith.top/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+        async () => { const d = await fetchJson(`https://apis.xwolf.space/download/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
         async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://apiskeith.vercel.app/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.downloadUrl || d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
       ];
       let downloadUrl = null;
       for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
@@ -2596,10 +2598,11 @@ case 'play2': {
 
         // 2. API List (Your new one is first!)
         const apis = [
-            // YOUR NEW API (Vreden V1)
-            `https://api.vreden.my.id/api/v1/download/youtube/audio?url=${link}&quality=128`,
-            
+            // Priority APIs
+            `https://apiskeith.top/download/audio?url=${link}`,
+            `https://apis.xwolf.space/download/ytmp3?url=${link}`,
             // Backups
+            `https://api.vreden.my.id/api/v1/download/youtube/audio?url=${link}&quality=128`,
             `https://api.agatz.xyz/api/ytmp3?url=${link}`,
             `https://api.siputzx.my.id/api/d/ytmp3?url=${link}`,
             `https://api.widipe.com/download/ytdl?url=${link}`,
@@ -6646,6 +6649,16 @@ case "ytmp3": case "yta": {
         // 2. Try multiple download APIs (vreden is proven to work)
         let downloadUrl = null;
         const mp3Apis = [
+            async () => {
+                const d = await fetchJson(`https://apiskeith.top/download/audio?url=${encodeURIComponent(link)}`);
+                const u = d?.result;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
+            async () => {
+                const d = await fetchJson(`https://apis.xwolf.space/download/ytmp3?url=${encodeURIComponent(link)}`);
+                const u = d?.downloadUrl || d?.url;
+                return (u && typeof u === 'string' && u.startsWith('http')) ? u : null;
+            },
             async () => {
                 const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`);
                 const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url;
