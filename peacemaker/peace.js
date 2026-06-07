@@ -2284,17 +2284,26 @@ break;
       const title = vid.title;
       const thumbnail = vid.thumbnail || '';
       m.reply(`_⬇️ Downloading *${title}*..._`);
-      const mp3Apis = [
-        async () => { const d = await fetchJson(`https://apiskeith.top/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://apis.xwolf.space/download/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-      ];
+      // Primary: ytdl-core direct URL extraction (fastest, no rate limits)
       let downloadUrl = null;
-      for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
+      try {
+        const _info = await ytdl.getInfo(link, { requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } } });
+        const _af = ytdl.chooseFormat(_info.formats, { filter: 'audioonly', quality: 'highestaudio' });
+        if (_af?.url) downloadUrl = _af.url;
+      } catch (_) {}
+      // API fallbacks (tried in order until one works)
+      if (!downloadUrl) {
+        const mp3Apis = [
+          async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.fabdl.com/youtube/mp3?url=${encodeURIComponent(link)}`); const u = d?.data?.download_url || d?.download_url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://yt-download.org/api/button/mp3?url=${encodeURIComponent(link)}`); const u = d?.url || d?.dlink; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+        ];
+        for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
+      }
       if (!downloadUrl) { await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } }); return reply('❌ All download servers failed. Try again later.'); }
       await client.sendMessage(m.chat, {
         audio: { url: downloadUrl },
@@ -2542,17 +2551,26 @@ case "song": {
       const title = vid.title;
       const thumbnail = vid.thumbnail || '';
       m.reply(`_⬇️ Downloading *${title}* as document..._`);
-      const mp3Apis = [
-        async () => { const d = await fetchJson(`https://apiskeith.top/download/audio?url=${encodeURIComponent(link)}`); const u = d?.result; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://apis.xwolf.space/download/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.downloadUrl || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-        async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
-      ];
+      // Primary: ytdl-core direct URL extraction
       let downloadUrl = null;
-      for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
+      try {
+        const _info2 = await ytdl.getInfo(link, { requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } } });
+        const _af2 = ytdl.chooseFormat(_info2.formats, { filter: 'audioonly', quality: 'highestaudio' });
+        if (_af2?.url) downloadUrl = _af2.url;
+      } catch (_) {}
+      // API fallbacks
+      if (!downloadUrl) {
+        const mp3Apis = [
+          async () => { const d = await fetchJson(`https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`); const u = d?.result?.url || d?.data?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`); const u = d?.result?.download?.url || d?.data?.download?.url || d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`); const u = d?.data?.url || d?.result?.url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://api.fabdl.com/youtube/mp3?url=${encodeURIComponent(link)}`); const u = d?.data?.download_url || d?.download_url || d?.url; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+          async () => { const d = await fetchJson(`https://yt-download.org/api/button/mp3?url=${encodeURIComponent(link)}`); const u = d?.url || d?.dlink; return (u && typeof u === 'string' && u.startsWith('http')) ? u : null; },
+        ];
+        for (const fn of mp3Apis) { try { downloadUrl = await fn(); if (downloadUrl) break; } catch (_) {} }
+      }
       if (!downloadUrl) { await client.sendMessage(m.chat, { react: { text: '❌', key: m.key } }); return reply('❌ All download servers failed. Try again later.'); }
       await client.sendMessage(m.chat, {
         document: { url: downloadUrl },
@@ -2596,55 +2614,53 @@ case 'play2': {
         reply(`_⬇️ Downloading *${title}*..._`);
         console.log(`[PLAY2] Searching: ${link}`);
 
-        // 2. API List (Your new one is first!)
-        const apis = [
-            // Priority APIs
-            `https://apiskeith.top/download/audio?url=${link}`,
-            `https://apis.xwolf.space/download/ytmp3?url=${link}`,
-            // Backups
-            `https://api.vreden.my.id/api/v1/download/youtube/audio?url=${link}&quality=128`,
-            `https://api.agatz.xyz/api/ytmp3?url=${link}`,
-            `https://api.siputzx.my.id/api/d/ytmp3?url=${link}`,
-            `https://api.widipe.com/download/ytdl?url=${link}`,
-            `https://api.dreaded.site/api/ytdl/audio?url=${link}`,
-            `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${link}`
-        ];
+        // Primary: ytdl-core direct URL extraction
+        let _p2Url = null;
+        try {
+          const _p2info = await ytdl.getInfo(link, { requestOptions: { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' } } });
+          const _p2fmt = ytdl.chooseFormat(_p2info.formats, { filter: 'audioonly', quality: 'highestaudio' });
+          if (_p2fmt?.url) _p2Url = _p2fmt.url;
+        } catch (_) {}
+
+        // API fallbacks
+        if (!_p2Url) {
+          const apis = [
+            `https://api.ryzendesu.vip/api/downloader/ytmp3?url=${encodeURIComponent(link)}`,
+            `https://api.siputzx.my.id/api/d/ytmp3?url=${encodeURIComponent(link)}`,
+            `https://api.dreaded.site/api/ytdl/audio?url=${encodeURIComponent(link)}`,
+            `https://api.vreden.my.id/api/v1/download/youtube/audio?url=${encodeURIComponent(link)}&quality=128`,
+            `https://api.agatz.xyz/api/ytmp3?url=${encodeURIComponent(link)}`,
+            `https://api.fabdl.com/youtube/mp3?url=${encodeURIComponent(link)}`,
+            `https://yt-download.org/api/button/mp3?url=${encodeURIComponent(link)}`,
+          ];
+          for (const url of apis) {
+            try {
+              const res = await axios.get(url, { timeout: 12000 });
+              const data = res.data;
+              const u = data.data?.url || data.result?.url || data.url || data.downloadUrl || data.data?.download_url || data.download_url;
+              if (u && typeof u === 'string' && u.startsWith('http')) { _p2Url = u; break; }
+            } catch (_) {}
+          }
+        }
 
         let success = false;
-
-        // 3. Loop through APIs
-        for (const url of apis) {
-            try {
-                let res = await axios.get(url);
-                let data = res.data;
-                
-                // Extract URL from various possible paths
-                let downloadUrl = data.data?.url || data.result?.url || data.url || data.downloadUrl || data.result;
-
-                if (downloadUrl && typeof downloadUrl === 'string' && downloadUrl.startsWith('http')) {
-                    
-                    await client.sendMessage(m.chat, {
-                        audio: { url: downloadUrl },
-                        mimetype: "audio/mpeg",
-                        fileName: `${title}.mp3`,
-                        contextInfo: {
-                            externalAdReply: {
-                                title: title,
-                                body: "KING M PLAYER",
-                                thumbnailUrl: thumbnail,
-                                sourceUrl: link,
-                                mediaType: 1,
-                                renderLargerThumbnail: true
-                            }
-                        }
-                    }, { quoted: m });
-                    
-                    success = true;
-                    break; 
+        if (_p2Url) {
+            await client.sendMessage(m.chat, {
+                audio: { url: _p2Url },
+                mimetype: "audio/mpeg",
+                fileName: `${title}.mp3`,
+                contextInfo: {
+                    externalAdReply: {
+                        title: title,
+                        body: "KING M PLAYER",
+                        thumbnailUrl: thumbnail,
+                        sourceUrl: link,
+                        mediaType: 1,
+                        renderLargerThumbnail: true
+                    }
                 }
-            } catch (e) {
-                continue;
-            }
+            }, { quoted: m });
+            success = true;
         }
 
         if (!success) {
